@@ -239,6 +239,13 @@ python scripts/gen_spacing_rules.py VSG_CHECKOUT/docs              # regenerate 
 UPDATE_EXPECT=1 cargo test --test golden                           # re-bless golden files (review the diff)
 ```
 
+CI also runs `cargo deny check` (licences, duplicate crates, advisories; `deny.toml`),
+`cargo machete` (unused dependencies), `typos` (`_typos.toml`), `cargo test --doc`,
+`cargo llvm-cov` (coverage in the job summary), `cargo semver-checks` against the base branch
+(reported, not enforced) and `examples/bench` against the base branch
+(`scripts/compare_bench.py`, warns when something is more than 25% slower). The formatter is
+fuzzed nightly (`cargo +nightly fuzz run format`, `fuzz/fuzz_targets/format.rs`).
+
 The library (`vsg_rs`) can also be used directly: `Parsed::new`, `format_parsed`, `fix_with`,
 `rules::check_with` and the range variants `format_range` / `fix_range`.
 

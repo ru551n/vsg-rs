@@ -39,3 +39,93 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.95
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets
+
+  # Licences, duplicate crates, unknown sources and RUSTSEC advisories (deny.toml).
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # Documentation examples, spelling of user-visible text, and unused dependencies.
+  extras:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-machete
+      - run: cargo test --workspace --doc
+      - uses: crate-ci/typos@master
+      - run: cargo machete
+
+  # How much of the code the tests reach; a number per pull request, not a gate.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Measure
+        run: |
+          cargo llvm-cov --workspace --lcov --output-path lcov.info
+          {
+            echo "## Coverage"
+            echo
+            echo '```'
+            cargo llvm-cov report --summary-only
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: coverage
+          path: lcov.info
+
+  # Changes to the public library API against the base branch. Reported, not enforced: vsg-rs
+  # is still 0.x, and the API may change with a minor version.
+  semver:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks
+      - env:
+          BASE: ${{ github.base_ref }}
+        run: cargo semver-checks --baseline-rev "origin/$BASE"
+
+  # Timings of this pull request against its base (warns, never fails: shared runners).
+  bench:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: This pull request
+        run: cargo run --release --example bench > head.txt
+      - name: Its base
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git checkout --detach "origin/$BASE"
+          cargo run --release --example bench > base.txt
+          git checkout -
+      - run: python3 scripts/compare_bench.py base.txt head.txt

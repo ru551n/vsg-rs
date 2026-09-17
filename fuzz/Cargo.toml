@@ -1,0 +1,26 @@
+[package]
+name = "vsg-rs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vsg-rs = { path = ".." }
+
+[[bin]]
+name = "format"
+path = "fuzz_targets/format.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = true
+
+# A crate of its own, so that the nightly toolchain cargo-fuzz needs stays out of the build of
+# vsg-rs itself.
+[workspace]

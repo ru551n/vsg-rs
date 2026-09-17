@@ -1,0 +1,13 @@
+# Spelling of user-visible text (`typos`, and the `extras` job in CI).
+
+[default.extend-words]
+# The EDA vendor, and the pragma prefix VSG matches on.
+synopsys = "synopsys"
+# Both spellings are in use; the documentation uses this one.
+unparseable = "unparseable"
+# VSG's author.
+Leary = "Leary"
+
+[files]
+# VSG's bundled defaults and the learned tables are data, not prose.
+extend-exclude = ["src/vsg_defaults.json", "src/layout_rules.json", "src/spacing_rules.json"]

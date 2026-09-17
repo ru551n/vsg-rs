@@ -1,0 +1,43 @@
+# Fuzzing runs on a schedule, not per pull request: it needs nightly Rust and minutes of CPU,
+# and its failures are rare. The target is fuzz/fuzz_targets/format.rs.
+name: Fuzz
+
+on:
+  schedule:
+    # 03:17 UTC, daily.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: How long to fuzz
+        default: "300"
+  pull_request:
+    paths:
+      - "fuzz/**"
+      - ".github/workflows/fuzz.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target\nfuzz -> target"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+      - name: Fuzz the formatter
+        env:
+          SECONDS_TO_RUN: ${{ inputs.seconds || '300' }}
+        run: cargo fuzz run format -- -max_total_time="$SECONDS_TO_RUN" -timeout=30
+      - name: Keep what crashed
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts

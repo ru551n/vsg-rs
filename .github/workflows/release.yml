@@ -143,7 +143,7 @@ jobs:
           targets: ${{ matrix.target }}
       - name: Install cargo-zigbuild
         if: matrix.zig
-        run: pip install ziglang cargo-zigbuild
+        run: pip install --retries 10 --timeout 60 ziglang cargo-zigbuild
       - name: Build
         shell: bash
         run: |

@@ -1070,6 +1070,27 @@ impl<'a> Builder<'a> {
         concat(out)
     }
 
+    /// Whether the `:` or `=>` of a list element is aligned, by the VSG rule of its construct.
+    fn alignment_enabled(&self, n: &SyntaxNode, sep: &SyntaxToken) -> bool {
+        let align = &self.cfg.align;
+        if sep.kind() == T::RightArrow {
+            return align.map_arrows;
+        }
+        let mut node = n.parent();
+        while let Some(p) = node {
+            match p.kind() {
+                N::ComponentDeclaration => return align.component_colons,
+                N::EntityDeclaration | N::BlockStatement => return align.interface_colons,
+                N::FunctionSpecification | N::ProcedureSpecification => {
+                    return align.parameter_colons;
+                }
+                N::RecordTypeDefinition => return true,
+                _ => node = p.parent(),
+            }
+        }
+        true
+    }
+
     /// Request alignment padding for list elements that are printed one per line: `:` in
     /// interface and record element declarations, `=>` in named associations, and port modes
     /// padded to a common width.
@@ -1095,7 +1116,7 @@ impl<'a> Builder<'a> {
             // every other element to the right.
             if let Some(width) = self
                 .flat_width_before(&n, &sep)
-                .filter(|w| *w <= self.cfg.width / 2)
+                .filter(|w| *w <= self.cfg.width / 2 && self.alignment_enabled(&n, &sep))
             {
                 targets.push((sep, width));
             }

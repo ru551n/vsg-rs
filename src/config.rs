@@ -747,6 +747,11 @@ impl Config {
                 family.include_lines_without_comments,
             );
         }
+        let enabled = |rule: &str| self.rule_by_id(rule).is_none_or(|s| s.enabled);
+        align.interface_colons = enabled("entity_017");
+        align.component_colons = enabled("component_017");
+        align.parameter_colons = enabled("procedure_410");
+        align.map_arrows = enabled("instantiation_010");
         self.format.align = align;
     }
 

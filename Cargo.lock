@@ -473,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "vsg-rs"
-version = "0.9.4"
+version = "0.9.6"
 dependencies = [
  "clap",
  "rayon",

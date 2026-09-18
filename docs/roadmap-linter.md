@@ -11,6 +11,42 @@ published DO-254 and CNES mappings), and the standard RTL lint checklist (latch 
 incomplete sensitivity lists, multiple drivers, width mismatches, unread logic). Details and
 citations in `comparison.md`.
 
+## v1, decided
+
+The first semantic release, settled 2026-09-18. Everything here is a decision, not a proposal.
+
+* **Engine**: `vhdl_lang` as a crate. No subprocess, no simulator, one binary.
+* **Checks**: the two linters `vhdl_lang` already implements and nothing else —
+  `semantic_001` missing signal in a sensitivity list, `semantic_002` superfluous signal,
+  `semantic_003` disallowed item, `semantic_004` unused declaration. Compiler-grade diagnostics
+  (`Unresolved`, `TypeMismatch`, …) and latch inference wait for a later release: they are worth
+  more but they flood the report when a library map is incomplete.
+* **Rule ids**: `semantic_NNN`, VSG-shaped, in the ordinary `rule:` map, so `disable`, `severity`
+  and `file_rules` work on them unchanged. A `semantic` group switches the set.
+* **Entry is opt-in, the rules are picky.** Without `--semantic` a run stays byte-identical to
+  VSG. With it, every semantic rule is on at **Error** severity and fails the build — a linter
+  earns its name by being strict, and teams dial rules down rather than hunting for them.
+  Consequence: the first run on an existing codebase is a wall of red, so **waiver files and
+  `--generate-waivers` (§3) ship with or before v1**. They are the release valve.
+* **Library mapping**: `vhdl_ls.toml` when the project has one, otherwise every input file goes
+  into `work`. Never written, only read.
+* **Standard libraries**: the 38 `ieee`/`std` source files (2.3 MB) are embedded in the binary
+  and registered as in-memory sources, bypassing `vhdl_lang`'s disk search, which panics when it
+  finds nothing. Distribution stays one self-contained file. `NOTICE` credits the IEEE P1076 WG
+  sources (Apache-2.0) and rust_hdl (MPL-2.0).
+* **Sensitivity-list heuristic**: upstream's, unchanged — a process is sequential when its body
+  is a single `if` on `rising_edge`/`'event`, combinational otherwise. Findings then match what
+  VHDL-LS already shows in the editor.
+* **Parse skew**: `vhdl_lang` parses independently of `vhdl_syntax`, so some files will format but
+  not analyse. Those keep their style findings, are skipped by the semantic phase, and the run
+  ends with one summary line; `--debug` lists them. Never silent.
+* **Related positions** are folded into the message ("first read at line 42") rather than
+  changing `Violation`.
+* **Performance**: the semantic phase reparses the file set in the parent process. Measure on the
+  VUnit corpus, optimise only if it is actually slow. The default path is untouched.
+* **Packaging**: always built in, no cargo feature. One binary, one wheel, one Action.
+* **Delivery**: its own pull request after #17 merges.
+
 ## 1. Semantic analysis — the one gap that matters
 
 Everything below the style layer needs name resolution. The cheap route exists: **`vhdl_lang`**,
@@ -158,10 +194,11 @@ Being reachable matters as much as being good; the aggregators are where VHDL us
 
 ## The order I would actually do it in
 
-1. Waiver files and `--generate-waivers` (§3) — unblocks adoption on existing codebases.
-2. The rule-id namespace, then the `vhdl_lang` phase (§1) — everything semantic waits on it.
-3. Sensitivity lists, unused and dead code, latch inference (§1) — the three checks every RTL
-   lint checklist opens with.
+1. Waiver files and `--generate-waivers` (§3) — a prerequisite now, not a nicety: semantic rules
+   are Errors by default, so an existing codebase needs the release valve on day one.
+2. The `vhdl_lang` phase and the four `semantic_00N` rules (§1) — v1 as specified above.
+3. Compiler-grade diagnostics, then latch inference (§1) — once library maps are proven in the
+   field and the noise is understood.
 4. `vhdl_ls.toml` library mapping (§2) — turns the rest of §1 on.
 5. Declarative custom rules (§5) — the differentiator no free VHDL tool has.
 6. SonarQube and Warnings-NG output, caching, upward config search — small and mechanical.

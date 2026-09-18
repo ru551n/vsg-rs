@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.10.0
+
+Breaking for users of the Rust library; the command line, the configuration and the GitHub
+Action are unchanged.
 
 * Internal: the rule catalog lists only the 191 rules the formatter does not own and takes the
   ids from VSG's bundled defaults; duplicated helpers in the rule modules, two identical check
@@ -11,6 +14,9 @@
   `check_unformatted`.
 * Wheels are tested on Python 3.10 and 3.14 instead of all five versions; the wheel is the same
   bytes for every version.
+* CI checks licences, duplicate crates and advisories (`cargo deny`), coverage, unused
+  dependencies, spelling and documentation examples, compares the benchmarks with the base
+  branch and reports public API changes; the formatter is fuzzed nightly.
 
 ## 0.9.6
 

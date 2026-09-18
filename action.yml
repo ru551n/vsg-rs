@@ -10,7 +10,7 @@ inputs:
     description: 'Arguments for vsg-rs (VSG''s command line), for example `-c vsg.yaml --recursive src`.'
     default: --recursive .
   version:
-    description: 'vsg-rs release to use (`v0.9.6`, or `latest`). By default, the release of the action''s own tag, else the latest release.'
+    description: 'vsg-rs release to use (`v0.10.0`, or `latest`). By default, the release of the action''s own tag, else the latest release.'
     default: ""
   working-directory:
     description: 'Directory to run vsg-rs in, relative to the repository root.'

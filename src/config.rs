@@ -1057,7 +1057,9 @@ fn path_matches(pattern: &str, path: &str) -> bool {
             .any(|(i, _)| glob(pattern.as_bytes(), &path.as_bytes()[i + 1..]))
 }
 
-fn glob(pattern: &[u8], text: &[u8]) -> bool {
+/// Match a path against a VSG-style pattern: `?` one character, `*` one path segment, `**` any
+/// number of segments. Both sides use `/` separators.
+pub fn glob(pattern: &[u8], text: &[u8]) -> bool {
     match pattern {
         [] => text.is_empty(),
         [b'*', b'*', rest @ ..] => {

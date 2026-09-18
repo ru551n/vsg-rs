@@ -216,6 +216,7 @@ The wheels install the `vsg-rs` executable. `python -m vsg_rs ...` runs it too, 
   [line folding](docs/line-folding.md) and its [coverage matrix](docs/line-folding-coverage.md)
 * [Migrating from VSG](docs/migrating-from-vsg.md) (including pre-commit and CI)
 * [GitHub Action](docs/github-action.md) and code scanning, [GitLab CI](docs/gitlab-ci.md)
+* [Waivers](docs/waivers.md): accepting known violations so only new ones are reported
 * [Editor integration](docs/editors.md)
 * [vsg-rs next to Linty and Sigasi](docs/comparison.md): what a per-file style linter cannot do,
   and the [roadmap to a full linter](docs/roadmap-linter.md)

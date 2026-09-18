@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+* Waivers (`docs/waivers.md`): `--waivers FILE` accepts the violations a project has decided to
+  live with, listed by rule, file glob, lines and reason. `--generate_waivers FILE` writes a
+  file covering everything found now, so a rule set can be adopted on existing code in one
+  command, and `--show_waived` lists what was waived instead of only counting it. Waived
+  violations never affect the exit code.
 * `--statistics` prints the violations per rule over all inputs, with how many files each
   affects and whether `--fix` fixes it.
 * `comment_004` (`number_of_spaces`) sets the spaces before a trailing comment.

@@ -151,6 +151,16 @@ fn always_assigned(statements: &[SyntaxNode]) -> BTreeSet<String> {
                         .collect(),
                 ));
             }
+            // A `for` loop over a range runs, and synthesis unrolls it, so its body assigns.
+            // A `while` loop may not run at all, so it promises nothing.
+            NodeKind::LoopStatement
+                if statement
+                    .children()
+                    .find(|c| c.kind() == NodeKind::LoopStatementPreamble)
+                    .is_some_and(|p| text_of(&p).starts_with("for")) =>
+            {
+                out.extend(always_assigned(&body(statement)));
+            }
             kind if ASSIGNMENTS.contains(&kind) => {
                 out.extend(target(statement).map(|(name, _)| name));
             }
@@ -356,6 +366,20 @@ mod tests {
         assert!(
             !found.iter().any(|(rule, _)| *rule == "lint_600"),
             "every alternative assigns c, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_for_loop_assigns_every_element() {
+        let found = check_source(
+            "entity dut is\nend entity;\n\narchitecture rtl of dut is\n  \
+             signal a, b : bit_vector(3 downto 0);\nbegin\n  p : process (a) is\n  begin\n    \
+             for i in a'range loop\n      b(i) <= a(i);\n    end loop;\n  end process;\n\
+             end architecture;\n",
+        );
+        assert!(
+            !found.iter().any(|(rule, _)| *rule == "lint_600"),
+            "the loop covers every bit, got {found:?}"
         );
     }
 

@@ -25,6 +25,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 similar = "3.2.0"
 tempfile = "3.27.0"
+vhdl_lang = "0.88.0"
 # Pinned to a git revision with fixes after the 0.2.0 release (see docs/vhdl-frontend.md).
 vhdl_syntax = { git = "https://github.com/VHDL-LS/rust_hdl", rev = "419ec78", version = "0.2.0" }
 yaml_serde = "0.10.7"

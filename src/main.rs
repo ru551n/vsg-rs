@@ -2,6 +2,7 @@
 
 use std::process::ExitCode;
 
+mod lint;
 mod local_rules;
 mod vsg_cli;
 

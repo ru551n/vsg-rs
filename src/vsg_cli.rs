@@ -236,6 +236,10 @@ struct Args {
     /// Print how many violations each rule reports, over all inputs (vsg-rs extension)
     #[arg(long)]
     statistics: bool,
+    /// Which layers to run: `style` (VSG's rules, the default) and `lint` (rules that need name
+    /// resolution). Comma separated (vsg-rs extension)
+    #[arg(long = "check", value_name = "LAYERS", default_value = "style")]
+    check: String,
 }
 
 /// Parse `START:END` (1-based, inclusive line numbers).
@@ -813,6 +817,9 @@ fn list_rules() -> ExitCode {
         };
         let _ = writeln!(out, "{id:42} {status}");
     }
+    for (id, description) in crate::lint::rules() {
+        let _ = writeln!(out, "{id:42} lint (--check lint): {description}");
+    }
     ExitCode::SUCCESS
 }
 
@@ -1099,6 +1106,20 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         );
         return ExitCode::SUCCESS;
     }
+    let layers: Vec<String> = args.check.split(',').map(|l| l.trim().to_owned()).collect();
+    if let Some(unknown) = layers
+        .iter()
+        .find(|l| !["style", "lint"].contains(&l.as_str()))
+    {
+        eprintln!("ERROR: --check: unknown layer `{unknown}` (style, lint)");
+        return ExitCode::from(1);
+    }
+    let style = layers.iter().any(|l| l == "style");
+    let lint = layers.iter().any(|l| l == "lint");
+    if !style && (args.fix || args.fix_only.is_some()) {
+        eprintln!("ERROR: --fix belongs to the style layer; add `style` to --check");
+        return ExitCode::from(1);
+    }
     if args.list_rules {
         return list_rules();
     }
@@ -1340,6 +1361,60 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     {
         eprintln!("ERROR: {e}");
         failed = true;
+    }
+    // The lint layer: one analysis over the whole file set, after any fixes were written, so its
+    // positions match what is now on disk. Style findings stand on their own if it fails.
+    if !style {
+        // Only the lint layer was asked for; the style findings were produced on the way here.
+        for r in &mut results {
+            r.violations.clear();
+        }
+    }
+    if lint && !args.stdin {
+        match crate::lint::analyse(&files) {
+            Ok(analysis) => {
+                for f in analysis.findings {
+                    let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == f.file) else {
+                        continue;
+                    };
+                    // Picky by default: a lint rule is an error unless the configuration says
+                    // otherwise, and disabling it in the configuration switches it off.
+                    let settings = cfg.rule_by_id(f.rule);
+                    if settings.as_ref().is_some_and(|s| !s.enabled) {
+                        continue;
+                    }
+                    r.violations.push(Diagnostic {
+                        line: f.line,
+                        column: f.column,
+                        rule: f.rule.to_owned(),
+                        severity: settings
+                            .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
+                        message: f.message,
+                    });
+                }
+                for r in &mut results {
+                    r.violations.sort_by_key(|d| (d.line, d.column));
+                }
+                if !analysis.unanalysed.is_empty() {
+                    eprintln!(
+                        "WARNING: {} of {} file(s) could not be analysed by the lint layer{}",
+                        analysis.unanalysed.len(),
+                        files.len(),
+                        if args.debug {
+                            ":"
+                        } else {
+                            "; run --debug to list them"
+                        }
+                    );
+                    if args.debug {
+                        for f in &analysis.unanalysed {
+                            eprintln!("DEBUG:   {}", f.display());
+                        }
+                    }
+                }
+            }
+            Err(e) => eprintln!("WARNING: the lint layer did not run: {e}"),
+        }
     }
     let mut report = String::new();
     for (i, r) in results.iter().enumerate() {

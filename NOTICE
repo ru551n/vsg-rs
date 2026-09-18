@@ -1,0 +1,33 @@
+vsg-rs
+Copyright the vsg-rs authors
+Licensed under MIT OR Apache-2.0.
+
+This product embeds third-party VHDL sources so that the lint layer (`--check lint`) can
+resolve `ieee` and `std` without a simulator being installed. They are in
+`vendor/vhdl_libraries`, compiled into the binary and written to a cache directory on first
+use. They are not modified.
+
+--------------------------------------------------------------------------------
+vendor/vhdl_libraries/ieee2008, vendor/vhdl_libraries/synopsys,
+vendor/vhdl_libraries/vital2000
+
+    Copyright 2019 IEEE P1076 WG Authors
+    Licensed under the Apache License, Version 2.0.
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    The IEEE standard VHDL packages (numeric_std, std_logic_1164 and the rest), as
+    distributed by the rust_hdl project.
+
+--------------------------------------------------------------------------------
+vendor/vhdl_libraries/std
+
+    From the rust_hdl project (https://github.com/VHDL-LS/rust_hdl)
+    Licensed under the Mozilla Public License, Version 2.0.
+    http://mozilla.org/MPL/2.0/
+
+--------------------------------------------------------------------------------
+vhdl_lang, vhdl_syntax (Rust crates, linked)
+
+    From the rust_hdl project (https://github.com/VHDL-LS/rust_hdl)
+    Licensed under the Mozilla Public License, Version 2.0.
+    http://mozilla.org/MPL/2.0/

@@ -236,7 +236,16 @@ fn extensions_diff_range_sarif_and_rule_list() {
         serde_json::from_str(&std::fs::read_to_string(&sarif).unwrap()).unwrap();
     assert_eq!(doc["runs"][0]["results"][0]["ruleId"], "entity_015");
     let list = vsg(&["--list_rules"], "");
-    assert_eq!(String::from_utf8_lossy(&list.stdout).lines().count(), 972);
+    let listed = String::from_utf8_lossy(&list.stdout);
+    // Every VSG rule, and the lint layer's own rules after them.
+    assert_eq!(
+        listed.lines().filter(|l| !l.starts_with("lint_")).count(),
+        972
+    );
+    assert!(
+        listed.lines().any(|l| l.starts_with("lint_001")),
+        "lint rules are listed"
+    );
 }
 
 #[test]

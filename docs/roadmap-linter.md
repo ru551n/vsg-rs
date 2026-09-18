@@ -23,8 +23,11 @@ The first semantic release, settled 2026-09-18. Everything here is a decision, n
   more but they flood the report when a library map is incomplete.
 * **Rule ids**: `semantic_NNN`, VSG-shaped, in the ordinary `rule:` map, so `disable`, `severity`
   and `file_rules` work on them unchanged. A `semantic` group switches the set.
-* **Entry is opt-in, the rules are picky.** Without `--semantic` a run stays byte-identical to
-  VSG. With it, every semantic rule is on at **Error** severity and fails the build — a linter
+* **Entry is opt-in, the rules are picky.** The layers to run are chosen with one flag,
+  `--check lint,semantic` (`lint` alone by default, so a bare run stays byte-identical to VSG;
+  `--check semantic` runs only the semantic layer). Subcommands would be the obvious shape but
+  VSG's positional arguments are file names, so a list-valued option it is. Once `semantic` is in
+  the list, every semantic rule is on at **Error** severity and fails the build — a linter
   earns its name by being strict, and teams dial rules down rather than hunting for them.
   Consequence: the first run on an existing codebase is a wall of red, so **waiver files and
   `--generate-waivers` (§3) ship with or before v1**. They are the release valve.

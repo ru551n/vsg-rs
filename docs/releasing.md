@@ -65,6 +65,22 @@ vsg-rs is not on crates.io yet: crates.io does not accept git dependencies, and 
 on crates.io and publish with `cargo publish` (afterwards, crates.io trusted publishing can
 replace the token).
 
+## Pinned inputs
+
+Everything the build pulls in is pinned, so a release can be reproduced and nothing changes
+underneath it:
+
+* **Actions** by commit hash, with the version in a trailing comment (Dependabot updates them).
+* **Rust crates** by `Cargo.lock`; every `cargo` command in CI runs with `--locked`.
+* **The parser**, `vhdl_syntax`, by git revision (see `vhdl-frontend.md`).
+* **Tools** installed in CI by version: `cargo-deny`, `cargo-machete`, `cargo-llvm-cov`,
+  `cargo-semver-checks`, `cargo-fuzz`, `typos`, and maturin (`maturin-version`).
+* **VSG itself**, where the scripts compare against it: `uvx --from vsg==3.35.0 vsg`.
+
+Two things stay floating on purpose: the `stable` Rust toolchain in the lint, test and build
+jobs (testing against the current compiler is the point; the minimum version is pinned to 1.95
+in the `msrv` job), and the runner images (`ubuntu-latest` and friends).
+
 ## One-time setup
 
 1. On PyPI, add a *trusted publisher* for the project `vsg-rs`: owner `ru551n`, repository

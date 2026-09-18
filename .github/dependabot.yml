@@ -15,14 +15,12 @@ updates:
       cargo:
         patterns: ["*"]
 
-  # GitHub Actions used by the workflows and by the composite action (action.yml).
+  # GitHub Actions used by the workflows and by the composite action (action.yml). They are
+  # pinned to commit hashes, with the version in a comment; Dependabot updates both.
   - package-ecosystem: github-actions
     directory: /   # includes .github/workflows
     schedule:
       interval: weekly
-    ignore:
-      # Its refs name Rust toolchains (`@1.95` is the MSRV, `@stable`), not action versions.
-      - dependency-name: dtolnay/rust-toolchain
     groups:
       github-actions:
         patterns: ["*"]

@@ -817,7 +817,7 @@ fn list_rules() -> ExitCode {
         };
         let _ = writeln!(out, "{id:42} {status}");
     }
-    for (id, description) in crate::lint::rules() {
+    for (id, description) in crate::lint::rules().chain(crate::design::RULES.iter().copied()) {
         let _ = writeln!(out, "{id:42} lint (--check lint): {description}");
     }
     ExitCode::SUCCESS
@@ -1371,9 +1371,43 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         }
     }
     if lint && !args.stdin {
+        // Design checks on our own tree: they need no resolution, so they run per file and
+        // survive a file the analyser cannot parse.
+        for file in &files {
+            // What is on disk now, so positions match the file after `--fix` wrote it.
+            let Ok(source) = std::fs::read(file) else {
+                continue;
+            };
+            let parsed = vsg_rs::Parsed::new(source);
+            if !parsed.syntax_errors().is_empty() {
+                continue;
+            }
+            for f in crate::design::check(&parsed, file) {
+                let settings = cfg.rule_by_id(f.rule);
+                if settings.as_ref().is_some_and(|s| !s.enabled) {
+                    continue;
+                }
+                if let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == f.file) {
+                    r.violations.push(Diagnostic {
+                        line: f.line,
+                        column: f.column,
+                        rule: f.rule.to_owned(),
+                        severity: settings
+                            .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
+                        message: f.message,
+                    });
+                }
+            }
+        }
         match crate::lint::analyse(&files) {
             Ok(analysis) => {
+                let mapped = analysis.mapped;
+                let mut held_back = 0usize;
                 for f in analysis.findings {
+                    if !mapped && !crate::lint::needs_no_library_map(f.rule) {
+                        held_back += 1;
+                        continue;
+                    }
                     let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == f.file) else {
                         continue;
                     };
@@ -1394,6 +1428,12 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 }
                 for r in &mut results {
                     r.violations.sort_by_key(|d| (d.line, d.column));
+                }
+                if held_back > 0 {
+                    eprintln!(
+                        "WARNING: {held_back} lint finding(s) need to know the project's \
+                         libraries; write a vhdl_ls.toml to get them (see docs/lint.md)"
+                    );
                 }
                 if !analysis.unanalysed.is_empty() {
                     eprintln!(

@@ -36,6 +36,19 @@ pub(crate) struct Analysis {
     pub(crate) findings: Vec<Finding>,
     /// Inputs `vhdl_lang` could not parse, which keep their style findings and nothing else.
     pub(crate) unanalysed: Vec<PathBuf>,
+    /// Whether the project told us what its libraries are (`vhdl_ls.toml`).
+    pub(crate) mapped: bool,
+}
+
+/// Rules that only need the file itself, and so mean something even when the run does not know
+/// what the project's libraries are.
+///
+/// Without a library map every name from another library is unresolved, and an unresolved name
+/// makes the rules that depend on resolution produce nonsense: on 50 VUnit files, 9968
+/// `lint_100` findings and 623 knock-on `lint_302`. Reporting those by default would make the
+/// first run useless, so they wait until the project says where its libraries are.
+pub(crate) fn needs_no_library_map(rule: &str) -> bool {
+    matches!(rule, "lint_001" | "lint_002" | "lint_003")
 }
 
 /// Every `vhdl_lang` diagnostic this layer reports, as (its error code, our rule id, what it
@@ -472,6 +485,7 @@ pub(crate) fn analyse(files: &[PathBuf]) -> Result<Analysis, String> {
     Ok(Analysis {
         findings,
         unanalysed,
+        mapped: project_config().is_some(),
     })
 }
 

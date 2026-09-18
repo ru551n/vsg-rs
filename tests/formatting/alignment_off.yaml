@@ -1,0 +1,8 @@
+rule:
+  group:
+    alignment:
+      disable: true
+  port_007:
+    spaces_after: 1
+  port_008:
+    spaces_after: 1

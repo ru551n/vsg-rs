@@ -171,29 +171,27 @@ jobs:
   vsg:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write          # only to resolve suggestions that no longer apply (else: read)
       pull-requests: write     # suggestions and the summary comment
-      security-events: write   # only needed for sarif-upload
     steps:
       - uses: actions/checkout@v5
-      - uses: ru551n/vsg-rs@v0.9.4
+      - uses: ru551n/vsg-rs@v0.9.6
         with:
           args: -c vsg.yaml --recursive src   # any vsg-rs arguments
-          sarif-upload: true                  # optional: code scanning alerts
 ```
 
 The action downloads the vsg-rs release of its own tag (checked against `SHA256SUMS`) and
 runs `vsg-rs` with `args`. On a pull request:
 
 * **Suggested changes**: what `--fix` would change on the pull request's lines is posted as
-  suggestions in one review, applied with one click.
+  suggestions in one review, applied with one click. Suggestions that no longer apply are
+  resolved on the next run.
 * **One summary comment**: findings per rule and the command that fixes them, updated in place
   on every push.
 * **Annotations** on the lines the pull request adds or changes.
-* **Code scanning** (`sarif-upload: true`): rule violations become alerts under
-  *Security → Code scanning*, with review comments for the ones the pull request introduces;
-  alerts close when fixed. Free for public repositories. Running the workflow on pushes to the
-  default branch gives pull requests a baseline to compare with.
+* **Code scanning** (optional, `sarif-upload: true` with `security-events: write`): rule
+  violations also become tracked alerts under *Security → Code scanning*, and GitHub's
+  code scanning bot comments on the ones a pull request introduces.
 * **Result**: the step fails when vsg-rs reports error-severity violations
   (`fail-on-violations: false` only reports them).
 
@@ -202,7 +200,7 @@ Other inputs: `version` (a release tag or `latest`), `working-directory`, `annot
 alert per block to reformat), `pr-comment`, and `token`. Outputs: `exit-code`, `sarif-file`
 and `version`. Linux, Windows and macOS runners are supported. To fix the reported violations
 locally, run the same arguments with `--fix`. See [GitHub Action](docs/github-action.md) for
-details, and [ru551n/vhdl-ai-test#8](https://github.com/ru551n/vhdl-ai-test/pull/8) for an
+details, and [ru551n/vhdl-ai-test#9](https://github.com/ru551n/vhdl-ai-test/pull/9) for an
 example pull request.
 
 ### Python

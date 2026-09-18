@@ -116,8 +116,11 @@ through one VSG rule: `architecture_029` (names), `architecture_026` (colons),
 `declarative_part_400` (`:=`), `concurrent_006`, `process_400`, `architecture_027`,
 `entity_020`, `instantiation_029`, `concurrent_008` and `process_035` (comments). Their
 `disable`, `blank_line_ends_group`, `comment_line_ends_group` and
-`include_lines_without_comments` options are honoured; `rule: {group: {alignment: {disable:
-true}}}` turns all of this off except interface and map alignment. VSG's per-construct variants
+`include_lines_without_comments` options are honoured. The `:` of generic and port clauses
+follows `entity_017` (`component_017` in components, `procedure_410` in parameter lists), and
+the `=>` of maps follows `instantiation_010`; disabling them leaves one space.
+`rule: {group: {alignment: {disable: true}}}` turns all alignment off. Port modes are still
+padded as `port_007` to `port_009` say (`spaces_after: 1` for a single space). VSG's per-construct variants
 (for example `process_033` for colons in process declarative parts) follow the rule of their
 kind.
 

@@ -38,6 +38,7 @@ impl Family {
 }
 
 /// Alignment settings resolved from the configuration.
+#[allow(clippy::struct_excessive_bools)] // One switch per VSG alignment rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlignSettings {
     /// Names after the declaration keywords (`architecture_029`).
@@ -60,6 +61,14 @@ pub struct AlignSettings {
     pub concurrent_comments: Family,
     /// Trailing comments in process bodies (`process_035`).
     pub process_comments: Family,
+    /// `:` in the generic and port clauses of entities and blocks (`entity_017`).
+    pub interface_colons: bool,
+    /// `:` in the generic and port clauses of components (`component_017`).
+    pub component_colons: bool,
+    /// `:` in subprogram parameter lists (`procedure_410`).
+    pub parameter_colons: bool,
+    /// `=>` in generic and port maps and other named associations (`instantiation_010`).
+    pub map_arrows: bool,
 }
 
 impl Default for AlignSettings {
@@ -76,6 +85,10 @@ impl Default for AlignSettings {
             map_comments: group,
             concurrent_comments: group,
             process_comments: Family::new(false, false, true),
+            interface_colons: true,
+            component_colons: true,
+            parameter_colons: true,
+            map_arrows: true,
         }
     }
 }

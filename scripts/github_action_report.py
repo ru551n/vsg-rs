@@ -128,6 +128,71 @@ def diff_blocks(text: str, prefix: str) -> list[tuple[str, int, list[str], list[
     return [tuple(b) for b in blocks]
 
 
+def graphql(query: str, variables: dict) -> dict:
+    url = os.environ.get("GITHUB_GRAPHQL_URL", "https://api.github.com/graphql")
+    request = urllib.request.Request(
+        url, data=json.dumps({"query": query, "variables": variables}).encode(), method="POST"
+    )
+    request.add_header("Authorization", f"Bearer {os.environ['GITHUB_TOKEN']}")
+    with urllib.request.urlopen(request) as response:
+        result = json.loads(response.read())
+    if result.get("errors"):
+        raise RuntimeError(result["errors"][0].get("message", "GraphQL error"))
+    return result["data"]
+
+
+THREADS = """
+query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $after) {
+        nodes { id isResolved comments(first: 1) { nodes { body path line } } }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+"""
+
+
+def sync_threads(repo: str, number: int, current: set) -> set:
+    """Resolve the action's suggestion threads that vsg-rs no longer makes, reopen the ones it
+    makes again, and return the (path, line, body) of all the action's threads."""
+    owner, name = repo.split("/", 1)
+    threads = []
+    after = None
+    while True:
+        data = graphql(THREADS, {"owner": owner, "name": name, "number": number, "after": after})
+        page = data["repository"]["pullRequest"]["reviewThreads"]
+        threads += page["nodes"]
+        if not page["pageInfo"]["hasNextPage"]:
+            break
+        after = page["pageInfo"]["endCursor"]
+    existing = set()
+    for thread in threads:
+        first = thread["comments"]["nodes"][0] if thread["comments"]["nodes"] else None
+        if not first or SUGGESTION_MARKER not in first["body"]:
+            continue
+        key = (first["path"], first["line"], first["body"])
+        existing.add(key)
+        wanted = key in current
+        if wanted == thread["isResolved"]:
+            mutation = "unresolveReviewThread" if wanted else "resolveReviewThread"
+            try:
+                graphql(
+                    f"mutation($id: ID!) {{ {mutation}(input: {{threadId: $id}}) "
+                    "{ thread { id } } }",
+                    {"id": thread["id"]},
+                )
+            except (urllib.error.HTTPError, RuntimeError) as e:
+                warn(
+                    f"cannot resolve or reopen earlier suggestions ({getattr(e, 'code', e)}); "
+                    "the job needs `contents: write` for that"
+                )
+                break
+    return existing
+
+
 def suggestions(repo: str, pr: dict, diff_text: str, prefix: str, visible: dict) -> int:
     comments = []
     for path, first, old, new in diff_blocks(diff_text, prefix):
@@ -149,13 +214,8 @@ def suggestions(repo: str, pr: dict, diff_text: str, prefix: str, visible: dict)
         if last > first:
             comment.update(start_line=first, start_side="RIGHT")
         comments.append(comment)
-    if not comments:
-        return 0
-    existing = {
-        (c["path"], c.get("line"), c["body"])
-        for c in paginate(f"/repos/{repo}/pulls/{pr['number']}/comments")
-        if SUGGESTION_MARKER in c["body"]
-    }
+    current = {(c["path"], c["line"], c["body"]) for c in comments}
+    existing = sync_threads(repo, pr["number"], current)
     comments = [c for c in comments if (c["path"], c["line"], c["body"]) not in existing]
     skipped = max(0, len(comments) - MAX_SUGGESTIONS)
     comments = comments[:MAX_SUGGESTIONS]
@@ -272,10 +332,11 @@ def main() -> int:
             diff_text = f.read()
         try:
             posted = suggestions(repo, pr, diff_text, prefix, visible)
-        except urllib.error.HTTPError as e:
+        except (urllib.error.HTTPError, RuntimeError) as e:
+            code = getattr(e, "code", e)
             warn(
-                f"cannot post suggestions ({e.code}); the job needs `pull-requests: write` "
-                "and pull requests from forks get a read-only token"
+                f"cannot post or update suggestions ({code}); the job needs "
+                "`pull-requests: write`, and pull requests from forks get a read-only token"
             )
 
     text = summary_markdown(all_results, args.command, posted)

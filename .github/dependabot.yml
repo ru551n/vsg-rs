@@ -1,5 +1,5 @@
 # Dependency updates, once a week, grouped so that each ecosystem opens at most one pull
-# request for minor and patch updates. CI (and, for workflow changes, the release and action
+# request. CI (and, for workflow changes, the release and action
 # test workflows) must pass before merging.
 version: 2
 updates:
@@ -13,16 +13,19 @@ updates:
       - dependency-name: vhdl_syntax
     groups:
       cargo:
-        update-types: [minor, patch]
+        patterns: ["*"]
 
   # GitHub Actions used by the workflows and by the composite action (action.yml).
   - package-ecosystem: github-actions
-    directories: [/, /.github/workflows]
+    directory: /   # includes .github/workflows
     schedule:
       interval: weekly
+    ignore:
+      # Its refs name Rust toolchains (`@1.95` is the MSRV, `@stable`), not action versions.
+      - dependency-name: dtolnay/rust-toolchain
     groups:
       github-actions:
-        update-types: [minor, patch]
+        patterns: ["*"]
 
   # Python packaging (pyproject.toml: the maturin build requirement).
   - package-ecosystem: pip
@@ -31,4 +34,4 @@ updates:
       interval: weekly
     groups:
       python:
-        update-types: [minor, patch]
+        patterns: ["*"]

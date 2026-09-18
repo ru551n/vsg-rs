@@ -8,7 +8,7 @@ vhdl-style:
   stage: test
   image: python:3.13-slim
   script:
-    - pip install --no-cache-dir vsg-rs==0.10.0
+    - pip install --no-cache-dir vsg-rs==0.11.0
     - >
       vsg-rs -c vsg.yaml --recursive src
       --quality_report gl-code-quality-report.json
@@ -44,7 +44,7 @@ Runners that cannot reach PyPI can use the standalone binary from the
 
 ```yaml
   before_script:
-    - curl -sSfL -o vsg-rs.tar.gz https://github.com/ru551n/vsg-rs/releases/download/v0.10.0/vsg-rs-v0.10.0-x86_64-unknown-linux-musl.tar.gz
+    - curl -sSfL -o vsg-rs.tar.gz https://github.com/ru551n/vsg-rs/releases/download/v0.11.0/vsg-rs-v0.11.0-x86_64-unknown-linux-musl.tar.gz
     - echo "$VSG_RS_SHA256  vsg-rs.tar.gz" | sha256sum -c -
     - tar xzf vsg-rs.tar.gz --strip-components=1
 ```

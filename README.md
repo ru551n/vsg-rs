@@ -176,7 +176,7 @@ jobs:
       pull-requests: write     # suggestions and the summary comment
     steps:
       - uses: actions/checkout@v5
-      - uses: ru551n/vsg-rs@v0.10.0
+      - uses: ru551n/vsg-rs@v0.11.0
         with:
           args: -c vsg.yaml --recursive src   # any vsg-rs arguments
 ```

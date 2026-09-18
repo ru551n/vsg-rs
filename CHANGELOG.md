@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0
 
 * `--statistics` prints the violations per rule over all inputs, with how many files each
   affects and whether `--fix` fixes it.

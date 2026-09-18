@@ -16,8 +16,8 @@ real edge, and note plausibility of a CST-based single-parse fix for each.
 
 | Limitation | vsg-rs |
 |---|---|
-| L1 PSL | Blocked by the frontend: `vhdl_syntax` does not parse PSL; files are reported and left untouched. PSL in comments is safe, because comments are never changed. |
-| L2 VHDL-2019 | Partial: `vhdl_syntax` parses many VHDL-2019 constructs; tool directives are refused for now. |
+| L1 PSL | Blocked by the frontend: `vhdl_syntax` does not parse PSL written as code (`default clock is ...`, `assert always (a -> b) @rising_edge(clk)`); such files are reported and left untouched. PSL inside comments (`-- psl ...`) is safe, because comments are never changed. |
+| L2 VHDL-2019 | Partial, measured (`compatibility.md`, "Language coverage"): conditional analysis, generic subprograms and interface packages parse; mode views (`view v of r`, `port (x : view v)`) and conditional expressions in declarations do not. Tool directives are refused for now. |
 | L3 No automatic rewrapping | Fixed: `vsg-rs --fix` folds long lines (`line-folding.md`). |
 | L4 No cross-file resolution | Planned for semantic rules (via `vhdl_lang`). |
 | L5 No parse-error recovery | By design, files with syntax errors are never modified; the parser still recovers enough to report errors. |

@@ -132,6 +132,23 @@ disables every built-in rule, so that only the local rules run.
 `scripts/compare_vsg.py FILE...` runs VSG 3.35 and vsg-rs on the same files and prints the
 findings per rule that both, only VSG, or only vsg-rs report.
 
+## Language coverage
+
+Measured over a 3,000-file corpus: 3 files (0.1%) do not parse and are reported and left
+unchanged. Two are non-UTF-8 charset fixtures, one uses PSL written as code.
+
+| Construct | Parses |
+|---|---|
+| VHDL-2008 external names, `case?`, contexts, generic package instantiation | yes |
+| VHDL-2019 conditional analysis (`` `if ``), generic subprograms, interface packages | yes |
+| VHDL-2019 mode views (`view v of r`, `port (x : view v)`) | no |
+| VHDL-2019 conditional expressions in a declaration (`:= if c then a else b`) | no |
+| PSL in comments (`-- psl assert ...`) | yes (comments are never changed) |
+| PSL as code (`default clock is ...`, `assert always (a -> b) @clk`) | no |
+
+The gaps are in the parser (`vhdl_syntax`), not in the rules; a file that does not parse is
+never modified.
+
 ## Known gaps
 
 See `rule-status.md` for rule coverage. Not supported: `indent.tokens` settings that are not about construct-level indentation (see `formatting.md`).

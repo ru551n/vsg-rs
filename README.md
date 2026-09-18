@@ -217,7 +217,8 @@ The wheels install the `vsg-rs` executable. `python -m vsg_rs ...` runs it too, 
 * [Migrating from VSG](docs/migrating-from-vsg.md) (including pre-commit and CI)
 * [GitHub Action](docs/github-action.md) and code scanning, [GitLab CI](docs/gitlab-ci.md)
 * [Editor integration](docs/editors.md)
-* [vsg-rs next to Linty and Sigasi](docs/comparison.md): what a per-file style linter cannot do
+* [vsg-rs next to Linty and Sigasi](docs/comparison.md): what a per-file style linter cannot do,
+  and the [roadmap to a full linter](docs/roadmap-linter.md)
 * [Architecture](docs/architecture.md) and the [VHDL frontend](docs/vhdl-frontend.md)
   (why `vhdl_syntax`)
 * [Performance](docs/performance.md)

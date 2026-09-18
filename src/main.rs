@@ -6,6 +6,7 @@ mod design;
 mod lint;
 mod local_rules;
 mod vsg_cli;
+mod waivers;
 
 fn main() -> ExitCode {
     vsg_cli::main(&std::env::args().collect::<Vec<_>>())

@@ -240,6 +240,15 @@ struct Args {
     /// resolution). Comma separated (vsg-rs extension)
     #[arg(long = "check", value_name = "LAYERS", default_value = "style")]
     check: String,
+    /// Accept the violations listed in this file, with their reasons (vsg-rs extension)
+    #[arg(long = "waivers", value_name = "WAIVERS", num_args = 1..)]
+    waivers: Vec<PathBuf>,
+    /// Write a waiver file accepting every violation found now (vsg-rs extension)
+    #[arg(long = "generate_waivers", value_name = "FILE")]
+    generate_waivers: Option<PathBuf>,
+    /// List the waived violations instead of only counting them (vsg-rs extension)
+    #[arg(long = "show_waived")]
+    show_waived: bool,
 }
 
 /// Parse `START:END` (1-based, inclusive line numbers).
@@ -1456,6 +1465,55 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             Err(e) => eprintln!("WARNING: the lint layer did not run: {e}"),
         }
     }
+    // Waivers are applied to everything the run found, whoever produced it (rules, layout or
+    // local rules), so one file covers the whole report.
+    if let Some(path) = &args.generate_waivers {
+        let findings: Vec<(String, String, usize)> = results
+            .iter()
+            .flat_map(|r| {
+                r.violations
+                    .iter()
+                    .map(|d| (r.name.clone(), d.rule.clone(), d.line))
+            })
+            .collect();
+        let text = crate::waivers::generate(&findings);
+        if let Err(e) = std::fs::write(path, &text) {
+            eprintln!("ERROR: {}: {e}", path.display());
+            return ExitCode::from(1);
+        }
+        println!(
+            "Wrote {} waiver(s) covering {} violation(s) to {}",
+            text.lines().filter(|l| l.starts_with("  - rule:")).count(),
+            findings.len(),
+            path.display()
+        );
+        return ExitCode::SUCCESS;
+    }
+    let waivers = match crate::waivers::Waivers::load(&args.waivers) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("ERROR: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let mut waived: Vec<String> = Vec::new();
+    if !waivers.is_empty() {
+        for r in &mut results {
+            let name = r.name.clone();
+            r.violations.retain(|d| {
+                let Some(w) = waivers.waives(&name, &d.rule, d.line) else {
+                    return true;
+                };
+                let reason = if w.reason.is_empty() {
+                    String::new()
+                } else {
+                    format!(" -- {}", w.reason)
+                };
+                waived.push(format!("{name}({}){}{reason}", d.line, d.rule));
+                false
+            });
+        }
+    }
     let mut report = String::new();
     for (i, r) in results.iter().enumerate() {
         if let Some(e) = &r.error {
@@ -1495,6 +1553,15 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             OutputFormat::Syntastic => syntastic_report(&mut report, r),
             OutputFormat::Summary => summary_report(&mut report, r, rules_checked),
         }
+    }
+    if !waived.is_empty() {
+        use std::fmt::Write as _;
+        if args.show_waived {
+            for line in &waived {
+                let _ = writeln!(report, "WAIVED: {line}");
+            }
+        }
+        let _ = writeln!(report, "{} violation(s) waived", waived.len());
     }
     if args.statistics {
         report += &statistics_report(&results, &cfg);

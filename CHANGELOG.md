@@ -14,6 +14,9 @@
   to the job summary (`scripts/compare_vsg.py --markdown`).
 * `vsg_rs: reflow_comments` re-wraps comment paragraphs to the line width (off by default; VSG
   has no such rule). Structured comments, directives and formatter-off regions are left alone.
+* `FormatConfig` is `#[non_exhaustive]`: struct literals of it no longer compile outside the
+  crate (build one from `FormatConfig::default()` instead), and adding an option is no longer a
+  breaking change.
 * The fuzzer also generates configurations, so formatting has to be stable under any settings,
   not only the default ones.
 

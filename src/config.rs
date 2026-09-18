@@ -18,7 +18,12 @@ pub enum KeywordCase {
 }
 
 /// Formatting policy. Everything here influences canonical output.
+///
+/// `#[non_exhaustive]`: new options are added here on most releases, so build one from
+/// [`FormatConfig::default`] (or [`crate::Config`]) and assign the fields you care about
+/// rather than writing a struct literal.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct FormatConfig {
     /// Target line width in display columns (see `docs/line-folding.md`).
     pub width: usize,

@@ -50,13 +50,12 @@ fn rule(
     anchors: fn(&Anchors<'_>, &mut Vec<SyntaxToken>),
 ) -> BlankRule {
     BlankRule {
-        info: crate::rules::RuleInfo {
+        info: crate::rules::RuleInfo::formatter(
             id,
-            groups: &["blank_line"],
-            severity: crate::config::Severity::Error,
-            enabled_by_default: enabled,
-            description: "Blank line policy (applied by the formatter).",
-        },
+            &["blank_line"],
+            enabled,
+            "Blank line policy (applied by the formatter).",
+        ),
         style,
         anchors,
     }

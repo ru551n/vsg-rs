@@ -13,16 +13,12 @@ use vhdl_syntax::tokens::TokenKind as T;
 use super::select::{
     bodies, child, children, clause_idents, declared, designators, end_ident, enum_literals,
     formals, generate_end_labels, generate_labels, ident, idents_of, interface_idents,
-    interface_list, labels_of, name_idents, parameters, specs, subprogram_spec, tokens,
+    interface_list, labels_of, name_idents, parameters, specs, subprogram_spec, text, tokens,
 };
 use super::{Check, Context, Edit, Fix, FixSafety, Rule, RuleInfo, Violation, violation};
 use crate::config::{RuleSettings, Severity};
 
 type Select = fn(&Context<'_>) -> Vec<SyntaxToken>;
-
-fn text(t: &SyntaxToken) -> String {
-    String::from_utf8_lossy(t.text().as_bytes()).into_owned()
-}
 
 fn is_extended(t: &SyntaxToken) -> bool {
     t.text().as_bytes().first() == Some(&b'\\')

@@ -4,7 +4,6 @@
 
 use vhdl_syntax::syntax::NodeKind as N;
 
-use crate::config::Severity;
 use crate::rules::RuleInfo;
 
 /// The constructs a keyword rule applies to, from its id prefix (`entity_010`: the `end` of
@@ -95,13 +94,12 @@ pub(crate) fn constructs(rule: &str) -> &'static [N] {
 }
 
 const fn info(id: &'static str) -> RuleInfo {
-    RuleInfo {
+    RuleInfo::formatter(
         id,
-        groups: &["case", "case::keyword"],
-        severity: Severity::Error,
-        enabled_by_default: true,
-        description: "Keyword case (applied by the formatter).",
-    }
+        &["case", "case::keyword"],
+        true,
+        "Keyword case (applied by the formatter).",
+    )
 }
 
 macro_rules! table {

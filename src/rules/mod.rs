@@ -61,6 +61,24 @@ pub struct RuleInfo {
     pub description: &'static str,
 }
 
+impl RuleInfo {
+    /// A rule the formatter applies: its settings configure the layout, and it has no check.
+    pub(crate) const fn formatter(
+        id: &'static str,
+        groups: &'static [&'static str],
+        enabled_by_default: bool,
+        description: &'static str,
+    ) -> RuleInfo {
+        RuleInfo {
+            id,
+            groups,
+            severity: Severity::Error,
+            enabled_by_default,
+            description,
+        }
+    }
+}
+
 pub(crate) type Check = fn(&Context<'_>, &RuleSettings, &mut Vec<Violation>);
 
 pub(crate) struct Rule {
@@ -228,20 +246,22 @@ pub fn info(id: &str) -> Option<&'static RuleInfo> {
     rules().iter().map(|r| &r.info).find(|i| i.id == id)
 }
 
-/// All implemented rules, sorted by id.
-pub fn implemented() -> impl Iterator<Item = &'static RuleInfo> {
-    rules().iter().map(|r| &r.info)
+/// Every VSG rule id with the part of vsg-rs that owns it (the formatter, unless
+/// `catalog::OWNERS` says otherwise).
+pub fn vsg_catalog() -> impl Iterator<Item = (&'static str, Owner)> {
+    crate::vsg_defaults::rule_ids()
+        .filter(|id| *id != "global")
+        .map(|id| (id, owner(id)))
 }
 
-/// Every VSG rule id with the part of vsg-rs that owns it.
-pub fn vsg_catalog() -> impl Iterator<Item = (&'static str, Owner)> {
-    catalog::VSG_RULES.iter().copied()
+fn owner(id: &str) -> Owner {
+    catalog::OWNERS
+        .binary_search_by_key(&id, |(r, _)| r)
+        .map_or(Owner::Formatter, |i| catalog::OWNERS[i].1)
 }
 
 pub(crate) fn is_known_rule(id: &str) -> bool {
-    catalog::VSG_RULES
-        .binary_search_by_key(&id, |(r, _)| r)
-        .is_ok()
+    !crate::vsg_defaults::defaults()["rule"][id].is_null()
 }
 
 /// Run every enabled rule on a snapshot. Violations are sorted by position, then rule id.
@@ -255,14 +275,6 @@ pub fn check_with(parsed: &Parsed, config: &Config, project: Option<&Project>) -
 }
 
 /// [`check`] plus the formatted source, formatting the snapshot at most once.
-pub fn check_and_format(
-    parsed: &Parsed,
-    config: &Config,
-) -> (Vec<Violation>, Result<Vec<u8>, crate::FormatError>) {
-    check_and_format_with(parsed, config, None)
-}
-
-/// [`check_and_format`], with the declarations of other files checked in the same run.
 pub fn check_and_format_with(
     parsed: &Parsed,
     config: &Config,
@@ -279,18 +291,9 @@ pub fn check_and_format_with(
     (violations, formatted)
 }
 
-/// [`check`] for collecting fixes: formatter-owned violations (which have no fix) do not need
-/// the formatted snapshot, so it is not computed.
-pub(crate) fn check_for_fixes(
-    parsed: &Parsed,
-    config: &Config,
-    project: Option<&Project>,
-) -> Vec<Violation> {
-    run(&Context::new(parsed, config, true, project))
-}
-
-/// [`check`] for a snapshot that is the formatter's own output.
-pub(crate) fn check_canonical(
+/// [`check`] without the formatted snapshot: for collecting fixes (formatter-owned violations
+/// have none) and for a snapshot that is the formatter's own output.
+pub(crate) fn check_unformatted(
     parsed: &Parsed,
     config: &Config,
     project: Option<&Project>,
@@ -395,8 +398,8 @@ mod tests {
 
     #[test]
     fn catalog_is_sorted_and_contains_implemented_rules() {
-        assert!(catalog::VSG_RULES.windows(2).all(|w| w[0].0 < w[1].0));
-        for info in implemented() {
+        assert!(catalog::OWNERS.windows(2).all(|w| w[0].0 < w[1].0));
+        for info in rules().iter().map(|r| &r.info) {
             assert!(is_known_rule(info.id), "{} is not a VSG rule", info.id);
         }
     }

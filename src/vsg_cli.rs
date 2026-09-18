@@ -55,40 +55,6 @@ fn describe_error(parsed: &Parsed, e: &FormatError) -> String {
     }
 }
 
-/// One violation per changed range of lines between the source and its formatting.
-fn format_findings(old: &[u8], new: &[u8]) -> Vec<Diagnostic> {
-    let old_lines: Vec<&[u8]> = old.split_inclusive(|&b| b == b'\n').collect();
-    let new_lines: Vec<&[u8]> = new.split_inclusive(|&b| b == b'\n').collect();
-    let last_line = old_lines.len().max(1);
-    let finding = |line: usize, message: String| Diagnostic {
-        line: line.min(last_line),
-        column: 1,
-        rule: "format".into(),
-        severity: "error".into(),
-        message,
-    };
-    let mut out = Vec::new();
-    for op in similar::capture_diff_slices(similar::Algorithm::Myers, &old_lines, &new_lines) {
-        let (tag, o, n) = op.as_tag_tuple();
-        let first = o.start + 1;
-        let last = o.end.max(o.start + 1);
-        let message = match tag {
-            similar::DiffTag::Equal => continue,
-            similar::DiffTag::Insert => format!("Formatting inserts {} line(s) here", n.len()),
-            similar::DiffTag::Delete if o.len() == 1 => "Formatting removes this line".to_owned(),
-            similar::DiffTag::Delete => format!("Formatting removes lines {first}-{last}"),
-            similar::DiffTag::Replace if o.len() == 1 => "Line is not formatted".to_owned(),
-            similar::DiffTag::Replace => format!("Lines {first}-{last} are not formatted"),
-        };
-        out.push(finding(first, message));
-    }
-    if out.is_empty() {
-        // Only line endings or the final newline differ.
-        out.push(finding(last_line, "File is not formatted".into()));
-    }
-    out
-}
-
 /// Violations for what formatting changes, under the VSG rule that reports each change.
 fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Diagnostic> {
     let after = Parsed::new(formatted);
@@ -111,8 +77,14 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
         });
     }
     if out.is_empty() {
-        // Only line endings or the final newline differ.
-        out = format_findings(parsed.source(), after.source());
+        // The tokens are the same; only line endings or the final newline differ.
+        out.push(Diagnostic {
+            line: parsed.source().split(|&b| b == b'\n').count().max(1),
+            column: 1,
+            rule: "format".into(),
+            severity: "error".into(),
+            message: "File is not formatted".into(),
+        });
     }
     out
 }

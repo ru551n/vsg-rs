@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+* Internal: the rule catalog lists only the 191 rules the formatter does not own and takes the
+  ids from VSG's bundled defaults; duplicated helpers in the rule modules, two identical check
+  entry points and a hand-rolled recursive merge are gone; `Doc::Choice` has two alternatives
+  instead of a list. No change in behaviour (identical findings on a 293-file corpus).
+* The library no longer exports `rules::check_and_format`, `rules::implemented` and
+  `fix_edits`, which had no users; `rules::check_for_fixes` and `rules::check_canonical` are one
+  `check_unformatted`.
+* Wheels are tested on Python 3.10 and 3.14 instead of all five versions; the wheel is the same
+  bytes for every version.
+
 ## 0.9.6
 
 * The GitHub Action still posts new suggestions when it may not resolve earlier ones, and warns

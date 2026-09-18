@@ -3,10 +3,12 @@
 
 use std::collections::HashMap;
 
-use vhdl_syntax::syntax::{NodeKind as N, SyntaxNode, SyntaxToken};
+use vhdl_syntax::syntax::{NodeKind as N, SyntaxNode};
 use vhdl_syntax::tokens::TokenKind as T;
 
-use super::select::{child, ident, ident_list, interface_idents, interface_list, subprogram_spec};
+use super::select::{
+    child, ident, ident_list, interface_idents, interface_list, subprogram_spec, text,
+};
 use crate::Parsed;
 
 /// Declarations collected from a set of files.
@@ -16,10 +18,6 @@ pub struct Project {
     packages: HashMap<String, Vec<(String, String)>>,
     /// Entity (lower case) → (generics, ports) as declared.
     entities: HashMap<String, (Vec<String>, Vec<String>)>,
-}
-
-fn text(t: &SyntaxToken) -> String {
-    String::from_utf8_lossy(t.text().as_bytes()).into_owned()
 }
 
 /// The names a package item declares, with the consistency rule that checks their uses.

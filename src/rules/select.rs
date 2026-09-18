@@ -30,6 +30,18 @@ pub(crate) fn ident_list(n: &SyntaxNode) -> Vec<SyntaxToken> {
         .unwrap_or_default()
 }
 
+/// A token's text, as a `String`.
+pub(crate) fn text(t: &SyntaxToken) -> String {
+    String::from_utf8_lossy(t.text().as_bytes()).into_owned()
+}
+
+/// Every token of `n`, including those of its children.
+pub(crate) fn all_tokens(n: &SyntaxNode) -> Vec<SyntaxToken> {
+    let mut out = Vec::new();
+    crate::collect_tokens(n, &mut out);
+    out
+}
+
 /// The label of a statement (also looked up in a loop preamble).
 pub(crate) fn label(n: &SyntaxNode) -> Option<SyntaxToken> {
     child(n, N::StmtLabel)

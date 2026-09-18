@@ -51,10 +51,6 @@ impl IndentPolicy {
             .copied()
             .unwrap_or_else(|| part.default_level())
     }
-
-    pub fn is_default(&self) -> bool {
-        self.levels.is_empty() && self.use_after_library.is_none()
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -306,41 +302,42 @@ pub fn resolve(user: Option<&Value>) -> (IndentPolicy, Vec<String>) {
             r.block(kind, name, (name, keyword), None, unit);
         }
     }
-    let process = "process_statement";
-    r.block(
-        ProcessStatement,
-        process,
-        (process, "process_keyword"),
-        Some((process, "begin_keyword")),
-        false,
-    );
-    let block = "block_statement";
-    r.block(
-        BlockStatement,
-        block,
-        (block, "block_label"),
-        Some((block, "begin_keyword")),
-        false,
-    );
-    let body = "subprogram_body";
-    r.block(
-        SubprogramBody,
-        body,
-        ("function_specification", "function_keyword"),
-        Some((body, "begin_keyword")),
-        false,
-    );
-    for (kind, name) in [
-        (ForGenerateStatement, "for_generate_statement"),
-        (IfGenerateStatement, "if_generate_statement"),
+    // Constructs with a `begin` between the declarations and the statements. The opening
+    // keyword and the body do not always belong to the construct's own settings.
+    let generate_begin = ("generate_statement_body", "begin_keyword");
+    for (kind, name, open, begin) in [
+        (
+            ProcessStatement,
+            "process_statement",
+            ("process_statement", "process_keyword"),
+            ("process_statement", "begin_keyword"),
+        ),
+        (
+            BlockStatement,
+            "block_statement",
+            ("block_statement", "block_label"),
+            ("block_statement", "begin_keyword"),
+        ),
+        (
+            SubprogramBody,
+            "subprogram_body",
+            ("function_specification", "function_keyword"),
+            ("subprogram_body", "begin_keyword"),
+        ),
+        (
+            ForGenerateStatement,
+            "for_generate_statement",
+            ("for_generate_statement", "generate_label"),
+            generate_begin,
+        ),
+        (
+            IfGenerateStatement,
+            "if_generate_statement",
+            ("if_generate_statement", "generate_label"),
+            generate_begin,
+        ),
     ] {
-        r.block(
-            kind,
-            name,
-            (name, "generate_label"),
-            Some(("generate_statement_body", "begin_keyword")),
-            false,
-        );
+        r.block(kind, name, open, Some(begin), false);
     }
     r.branches(
         IfStatement,
@@ -413,11 +410,11 @@ mod tests {
     #[test]
     fn vsg_defaults_are_the_formatter_defaults() {
         let (policy, warnings) = resolve(None);
-        assert!(policy.is_default(), "{policy:?}");
+        assert_eq!(policy, IndentPolicy::default());
         assert!(warnings.is_empty(), "{warnings:?}");
         let dump = &crate::vsg_defaults::defaults()["indent"]["tokens"];
         let (policy, warnings) = resolve(Some(dump));
-        assert!(policy.is_default(), "{policy:?}");
+        assert_eq!(policy, IndentPolicy::default());
         assert!(warnings.is_empty(), "{warnings:?}");
     }
 

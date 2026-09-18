@@ -157,8 +157,8 @@ pub struct Config {
     /// `pragma.patterns` from the configuration: (open, close) regular expressions.
     pragma_patterns: Option<(Vec<String>, Vec<String>)>,
     /// The `indent` and `pragma` blocks as written (for the effective configuration).
-    raw_indent: Option<Value>,
-    raw_pragma: Option<Value>,
+    raw_indent: Option<serde_json::Value>,
+    raw_pragma: Option<serde_json::Value>,
     /// `file_rules`: (path pattern, `rule` block) applied to matching files.
     file_rules: Vec<(String, Value)>,
     /// `file_list`: (path or glob pattern, the configuration file that lists it).
@@ -186,13 +186,12 @@ impl fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 const fn formatter_rule(id: &'static str) -> crate::rules::RuleInfo {
-    crate::rules::RuleInfo {
+    crate::rules::RuleInfo::formatter(
         id,
-        groups: &["blank_line"],
-        severity: Severity::Error,
-        enabled_by_default: true,
-        description: "Blank line policy (applied by the formatter).",
-    }
+        &["blank_line"],
+        true,
+        "Blank line policy (applied by the formatter).",
+    )
 }
 
 static WHITESPACE_200: crate::rules::RuleInfo = crate::rules::RuleInfo {
@@ -357,9 +356,9 @@ impl Config {
                 "file_rules" => self.merge_file_rules(value)?,
                 "pragma" => {
                     self.merge_pragma(value)?;
-                    merge_value(self.raw_pragma.get_or_insert(Value::Null), value);
+                    merge_raw(&mut self.raw_pragma, value);
                 }
-                "indent" => merge_value(self.raw_indent.get_or_insert(Value::Null), value),
+                "indent" => merge_raw(&mut self.raw_indent, value),
                 "local_rules" => {
                     let dir = value.as_str().ok_or("`local_rules` must be a directory")?;
                     self.local_rules = Some(expand_path(dir));
@@ -559,7 +558,6 @@ impl Config {
         let tokens = self
             .raw_indent
             .as_ref()
-            .and_then(|i| serde_json::to_value(i).ok())
             .map(|i| i["tokens"].clone())
             .filter(|t| !t.is_null());
         let (policy, warnings) = crate::indent::resolve(tokens.as_ref());
@@ -910,10 +908,10 @@ impl Config {
     /// The whole effective configuration as `vsg -oc` writes it.
     pub fn effective_configuration(&self) -> serde_json::Value {
         let defaults = crate::vsg_defaults::defaults();
-        let overlay = |base: &serde_json::Value, raw: &Option<Value>| {
+        let overlay = |base: &serde_json::Value, raw: &Option<serde_json::Value>| {
             let mut base = base.clone();
-            if let Some(raw) = raw.as_ref().and_then(|r| serde_json::to_value(r).ok()) {
-                merge_json(&mut base, &raw);
+            if let Some(raw) = raw {
+                merge_json(&mut base, raw);
             }
             base
         };
@@ -970,20 +968,14 @@ impl Config {
     }
 }
 
-/// Merge `overlay` into `base` (mappings recursively, everything else replaced).
-fn merge_value(base: &mut Value, overlay: &Value) {
-    match (base, overlay) {
-        (Value::Mapping(b), Value::Mapping(o)) => {
-            for (k, v) in o {
-                match b.get_mut(k) {
-                    Some(existing) => merge_value(existing, v),
-                    None => {
-                        b.insert(k.clone(), v.clone());
-                    }
-                }
-            }
-        }
-        (b, o) => *b = o.clone(),
+/// Merge a configuration block into the JSON copy kept for `-oc` (mappings recursively).
+fn merge_raw(base: &mut Option<serde_json::Value>, overlay: &Value) {
+    let Ok(overlay) = serde_json::to_value(overlay) else {
+        return;
+    };
+    match base {
+        Some(base) => merge_json(base, &overlay),
+        None => *base = Some(overlay),
     }
 }
 

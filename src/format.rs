@@ -860,7 +860,10 @@ impl<'a> Builder<'a> {
                                 children[i + 1..end].iter().map(|c| self.elem(c)).collect();
                             let value = concat(value);
                             let moved = Doc::indent(concat(vec![Doc::Line, value.clone()]));
-                            out.push(Doc::Choice(vec![value, moved]));
+                            out.push(Doc::Choice {
+                                flat: Box::new(value),
+                                broken: Box::new(moved),
+                            });
                             i = end;
                         }
                         _ if soft_break_before(n.kind(), t) => {
@@ -1204,35 +1207,31 @@ impl<'a> Builder<'a> {
     }
 
     fn align_declarations(&mut self, group: &[SyntaxNode], align: &crate::align::AlignSettings) {
+        // Each column is padded in turn; the earlier columns shift the later ones to the right.
+        type Column = (bool, fn(&SyntaxNode) -> Option<SyntaxToken>);
+        let columns: [Column; 3] = [
+            (align.declaration_names.enabled, declared_name),
+            (align.declaration_colons.enabled, |d| {
+                direct_token(d, |k| k == T::Colon)
+            }),
+            (align.declaration_assignments.enabled, |d| {
+                d.children()
+                    .find(|c| c.kind() == N::InitialValue)
+                    .map(|v| v.first_token())
+            }),
+        ];
         let mut shift: HashMap<usize, usize> = HashMap::new();
-        if align.declaration_names.enabled {
-            let names: Vec<(SyntaxNode, SyntaxToken)> = group
+        for (enabled, token_of) in columns {
+            if !enabled {
+                continue;
+            }
+            let targets: Vec<(SyntaxNode, SyntaxToken)> = group
                 .iter()
-                .filter_map(|d| declared_name(d).map(|t| (d.clone(), t)))
+                .filter_map(|d| token_of(d).map(|t| (d.clone(), t)))
                 .collect();
-            for (d, pad) in self.pad_to_common_column(&names, &shift) {
+            for (d, pad) in self.pad_to_common_column(&targets, &shift) {
                 *shift.entry(d).or_default() += pad;
             }
-        }
-        if align.declaration_colons.enabled {
-            let colons: Vec<(SyntaxNode, SyntaxToken)> = group
-                .iter()
-                .filter_map(|d| direct_token(d, |k| k == T::Colon).map(|t| (d.clone(), t)))
-                .collect();
-            for (d, pad) in self.pad_to_common_column(&colons, &shift) {
-                *shift.entry(d).or_default() += pad;
-            }
-        }
-        if align.declaration_assignments.enabled {
-            let assigns: Vec<(SyntaxNode, SyntaxToken)> = group
-                .iter()
-                .filter_map(|d| {
-                    d.children()
-                        .find(|c| c.kind() == N::InitialValue)
-                        .map(|v| (d.clone(), v.first_token()))
-                })
-                .collect();
-            self.pad_to_common_column(&assigns, &shift);
         }
     }
 

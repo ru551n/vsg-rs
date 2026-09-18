@@ -5,7 +5,7 @@
 use vhdl_syntax::syntax::{NodeKind as N, SyntaxNode, SyntaxToken};
 use vhdl_syntax::tokens::{Keyword as Kw, TokenKind as T, TriviaPiece};
 
-use super::select::{child, children, ident_list, tokens};
+use super::select::{all_tokens, child, children, ident_list, text, tokens};
 use super::{Check, Context, Edit, Fix, FixSafety, Rule, RuleInfo, Violation, violation};
 use crate::config::{RuleSettings, Severity};
 
@@ -24,16 +24,6 @@ fn rule(id: &'static str, enabled: bool, description: &'static str, check: Check
 
 fn source_text(cx: &Context<'_>, range: std::ops::Range<usize>) -> String {
     String::from_utf8_lossy(&cx.parsed.source()[range]).into_owned()
-}
-
-fn text(t: &SyntaxToken) -> String {
-    String::from_utf8_lossy(t.text().as_bytes()).into_owned()
-}
-
-fn all_tokens(n: &SyntaxNode) -> Vec<SyntaxToken> {
-    let mut out = Vec::new();
-    crate::collect_tokens(n, &mut out);
-    out
 }
 
 fn edit(start: usize, end: usize, text: impl Into<String>) -> Edit {

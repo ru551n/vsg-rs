@@ -53,63 +53,49 @@ pub struct LayoutChange {
     pub original: String,
 }
 
-/// Whitespace and comments between two tokens.
-struct Gap<'a> {
-    text: &'a [u8],
-}
-
-impl Gap<'_> {
-    fn newlines(&self) -> usize {
-        self.text.iter().filter(|&&b| b == b'\n').count()
-    }
-
-    fn has_comment(&self) -> bool {
-        self.text.windows(2).any(|w| w == b"--" || w == b"/*")
-    }
-
-    /// Width of the whitespace after the last line break (or of the whole gap).
-    fn tail(&self) -> usize {
-        let start = self
-            .text
-            .iter()
-            .rposition(|&b| b == b'\n')
-            .map_or(0, |p| p + 1);
-        self.text[start..]
-            .iter()
-            .filter(|&&b| matches!(b, b' ' | b'\t'))
-            .count()
-    }
-
-    /// Whether a line that ends in the gap ends with spaces or tabs.
-    fn trailing_whitespace(&self) -> bool {
-        self.text.split(|&b| b == b'\n').rev().skip(1).any(|line| {
-            line.strip_suffix(b"\r")
-                .unwrap_or(line)
-                .last()
-                .is_some_and(|b| matches!(b, b' ' | b'\t'))
-        })
-    }
-
-    /// Spaces before a comment on the same line as the previous token.
-    fn comment_offset(&self) -> Option<usize> {
-        let first = self
-            .text
-            .windows(2)
-            .position(|w| w == b"--" || w == b"/*")?;
-        let before = &self.text[..first];
-        (!before.contains(&b'\n')).then_some(before.len())
-    }
-}
-
-fn gap<'a>(src: &'a [u8], tokens: &[SyntaxToken], i: usize) -> Gap<'a> {
+/// The whitespace and comments between two tokens: `src` between the previous token and
+/// token `i`.
+fn gap<'a>(src: &'a [u8], tokens: &[SyntaxToken], i: usize) -> &'a [u8] {
     let start = if i == 0 {
         0
     } else {
         tokens[i - 1].text_range().end
     };
-    Gap {
-        text: &src[start..tokens[i].text_offset()],
-    }
+    &src[start..tokens[i].text_offset()]
+}
+
+fn newlines(gap: &[u8]) -> usize {
+    gap.iter().filter(|&&b| b == b'\n').count()
+}
+
+fn has_comment(gap: &[u8]) -> bool {
+    gap.windows(2).any(|w| w == b"--" || w == b"/*")
+}
+
+/// Width of the whitespace after the last line break (or of the whole gap).
+fn tail(gap: &[u8]) -> usize {
+    let start = gap.iter().rposition(|&b| b == b'\n').map_or(0, |p| p + 1);
+    gap[start..]
+        .iter()
+        .filter(|&&b| matches!(b, b' ' | b'\t'))
+        .count()
+}
+
+/// Whether a line that ends in the gap ends with spaces or tabs.
+fn trailing_whitespace(gap: &[u8]) -> bool {
+    gap.split(|&b| b == b'\n').rev().skip(1).any(|line| {
+        line.strip_suffix(b"\r")
+            .unwrap_or(line)
+            .last()
+            .is_some_and(|b| matches!(b, b' ' | b'\t'))
+    })
+}
+
+/// Spaces before a comment on the same line as the previous token.
+fn comment_offset(gap: &[u8]) -> Option<usize> {
+    let first = gap.windows(2).position(|w| w == b"--" || w == b"/*")?;
+    let before = &gap[..first];
+    (!before.contains(&b'\n')).then_some(before.len())
 }
 
 fn kind_name(t: &SyntaxToken) -> String {
@@ -180,22 +166,22 @@ pub fn layout_changes(before: &Parsed, after: &Parsed) -> Vec<LayoutChange> {
             );
         }
         let (gb, ga) = (gap(before.source(), bt, i), gap(after.source(), at, i));
-        if gb.text == ga.text {
+        if gb == ga {
             continue;
         }
-        let (nb, na) = (gb.newlines(), ga.newlines());
+        let (nb, na) = (newlines(gb), newlines(ga));
         let prev = if i == 0 {
             "Start".to_owned()
         } else {
             kind_name(&bt[i - 1])
         };
         let here = format!("{}:{}", construct(b), kind_name(b));
-        if gb.trailing_whitespace() && !ga.trailing_whitespace() {
+        if trailing_whitespace(gb) && !trailing_whitespace(ga) {
             let first_line = line.saturating_sub(nb).max(1);
             push(ChangeKind::Trailing, "Trailing".into(), None, 0, first_line);
         }
-        if gb.has_comment() || ga.has_comment() {
-            if let (Some(ob), Some(oa)) = (gb.comment_offset(), ga.comment_offset())
+        if has_comment(gb) || has_comment(ga) {
+            if let (Some(ob), Some(oa)) = (comment_offset(gb), comment_offset(ga))
                 && ob != oa
                 && i > 0
             {
@@ -208,12 +194,12 @@ pub fn layout_changes(before: &Parsed, after: &Parsed) -> Vec<LayoutChange> {
                 );
             }
             // Own-line comments keep their layout; only the token's indentation counts.
-            if nb > 0 && na > 0 && gb.tail() != ga.tail() {
+            if nb > 0 && na > 0 && tail(gb) != tail(ga) {
                 push(
                     ChangeKind::Indent,
                     format!("Indent:{here}"),
                     None,
-                    ga.tail(),
+                    tail(ga),
                     line,
                 );
             }
@@ -224,14 +210,14 @@ pub fn layout_changes(before: &Parsed, after: &Parsed) -> Vec<LayoutChange> {
                 ChangeKind::Spacing,
                 format!("Spacing:{}:{prev}>{}", construct(b), kind_name(b)),
                 None,
-                ga.tail(),
+                tail(ga),
                 line,
             ),
             (0, _) => push(
                 ChangeKind::LineBreak,
                 format!("LineBreak:{here}"),
                 None,
-                ga.tail(),
+                tail(ga),
                 line,
             ),
             (_, 0) => push(ChangeKind::Join, format!("Join:{here}"), None, 0, line),
@@ -245,12 +231,12 @@ pub fn layout_changes(before: &Parsed, after: &Parsed) -> Vec<LayoutChange> {
                         line,
                     );
                 }
-                if gb.tail() != ga.tail() {
+                if tail(gb) != tail(ga) {
                     push(
                         ChangeKind::Indent,
                         format!("Indent:{here}"),
                         None,
-                        ga.tail(),
+                        tail(ga),
                         line,
                     );
                 }

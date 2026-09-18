@@ -9,7 +9,7 @@ use vhdl_syntax::syntax::{NodeKind as N, SyntaxNode, SyntaxToken};
 use vhdl_syntax::tokens::{TokenKind, TriviaPiece};
 
 use crate::Parsed;
-use crate::config::{FormatConfig, Severity};
+use crate::config::FormatConfig;
 use crate::doc::display_width;
 use crate::rules::RuleInfo;
 
@@ -94,13 +94,12 @@ impl Default for AlignSettings {
 }
 
 const fn info(id: &'static str) -> RuleInfo {
-    RuleInfo {
+    RuleInfo::formatter(
         id,
-        groups: &["alignment"],
-        severity: Severity::Error,
-        enabled_by_default: true,
-        description: "Alignment policy (applied by the formatter).",
-    }
+        &["alignment"],
+        true,
+        "Alignment policy (applied by the formatter).",
+    )
 }
 
 /// The VSG rules that configure each family, in [`AlignSettings::families_mut`] order.

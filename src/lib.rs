@@ -31,7 +31,7 @@ use vhdl_syntax::tokens::TriviaPiece;
 
 pub use config::{Config, FormatConfig};
 pub use doc::display_width;
-pub use fix::{FixOptions, FixOutcome, fix, fix_edits, fix_with};
+pub use fix::{FixOptions, FixOutcome, fix, fix_with};
 
 /// One immutable source snapshot and its (single) parse.
 pub struct Parsed {
@@ -309,13 +309,7 @@ pub fn format_parsed(parsed: &Parsed, cfg: &FormatConfig) -> Result<Vec<u8>, For
     }
     let mut builder = format::Builder::new(cfg, parsed);
     let doc = builder.node(&parsed.root);
-    let opts = doc::PrintOptions {
-        width: cfg.width,
-        indent: cfg.indent,
-        tabs: cfg.tabs,
-        indent_continuations: cfg.indent_continuations,
-    };
-    let printed = Parsed::new(doc::print(doc, builder.groups(), &opts));
+    let printed = Parsed::new(doc::print(doc, builder.groups(), &cfg.into()));
     verify::equivalent_parsed(parsed, &printed).map_err(FormatError::Internal)?;
     // Only changes the spaces between code and a trailing comment on the same line, which
     // cannot change the verified tokens and comments.
@@ -420,7 +414,7 @@ pub fn apply_edits(source: &[u8], edits: &[TextEdit]) -> Vec<u8> {
 }
 
 fn is_blank_line(line: &[u8]) -> bool {
-    line.iter().all(u8::is_ascii_whitespace)
+    line.trim_ascii().is_empty()
 }
 
 /// Split a changed hunk into single-line changes and blank-line insertions/removals when its
@@ -463,7 +457,7 @@ pub fn format_range(
 ) -> Result<Vec<TextEdit>, FormatError> {
     let formatted = format_parsed(parsed, cfg)?;
     Ok(range_edits(parsed, &formatted, range, |edited| {
-        verify::equivalent(parsed, edited).is_ok()
+        verify::equivalent_parsed(parsed, &Parsed::new(edited.to_vec())).is_ok()
     }))
 }
 

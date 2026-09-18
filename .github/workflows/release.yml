@@ -183,7 +183,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # The wheel is `py3-none-<platform>` (`bindings = "bin"`), so the same bytes are
+        # installed on every version: the oldest and the newest are enough.
+        python: ["3.10", "3.14"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

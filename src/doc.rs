@@ -54,9 +54,12 @@ pub enum Doc {
         broken: Box<Doc>,
         flat: Box<Doc>,
     },
-    /// Alternative layouts of the same tokens: the first alternative whose first line fits is
-    /// printed (the last one otherwise). Flat, the first alternative is used.
-    Choice(Vec<Doc>),
+    /// Two layouts of the same tokens: `flat` when its first line fits (and always when the
+    /// enclosing group is flat), `broken` otherwise.
+    Choice {
+        flat: Box<Doc>,
+        broken: Box<Doc>,
+    },
     /// A value after `:=` or `=>`, in order of preference: flat on the current line; flat on an
     /// indented continuation line; folded inside itself with its first line on the current
     /// line; folded on a continuation line.
@@ -106,10 +109,7 @@ impl Doc {
                 flat.propagate();
                 false
             }
-            Doc::Choice(alts) => {
-                let forced: Vec<bool> = alts.iter_mut().map(Doc::propagate).collect();
-                forced.iter().all(|f| *f)
-            }
+            Doc::Choice { flat, broken } => flat.propagate() & broken.propagate(),
         }
     }
 
@@ -134,7 +134,7 @@ impl Doc {
             | Doc::Align(d)
             | Doc::Hug { value: d, .. }
             | Doc::Group { doc: d, .. } => d.first_atom_space(),
-            Doc::Choice(alts) => alts.first().and_then(Doc::first_atom_space),
+            Doc::Choice { flat, .. } => flat.first_atom_space(),
             Doc::Line | Doc::Hard | Doc::Blank(_) => Some(false),
             _ => None,
         }
@@ -150,6 +150,17 @@ pub struct PrintOptions {
     /// Continuation lines are indented one level instead of aligned (VSG `align_left: yes`,
     /// `align_paren: no`).
     pub indent_continuations: bool,
+}
+
+impl From<&crate::FormatConfig> for PrintOptions {
+    fn from(cfg: &crate::FormatConfig) -> PrintOptions {
+        PrintOptions {
+            width: cfg.width,
+            indent: cfg.indent,
+            tabs: cfg.tabs,
+            indent_continuations: cfg.indent_continuations,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -366,15 +377,9 @@ impl<'a> Printer<'a> {
                     });
                 }
             }
-            Doc::Choice(alts) => {
-                let doc = if cmd.flat {
-                    &alts[0]
-                } else {
-                    let (last, init) = alts.split_last().expect("non-empty choice");
-                    init.iter()
-                        .find(|d| self.fits(Cmd { doc: d, ..cmd }, stack))
-                        .unwrap_or(last)
-                };
+            Doc::Choice { flat, broken } => {
+                let fits = cmd.flat || self.fits(Cmd { doc: flat, ..cmd }, stack);
+                let doc = if fits { flat } else { broken };
                 stack.push(Cmd { doc, ..cmd });
             }
         }
@@ -516,12 +521,8 @@ impl<'a> Printer<'a> {
                 Doc::Hug { value, .. } if cmd.flat => work.push(Cmd { doc: value, ..cmd }),
                 Doc::Hug { .. } => return true,
                 // Later on the line, a choice may still take its most broken alternative.
-                Doc::Choice(alts) => {
-                    let doc = if cmd.flat {
-                        &alts[0]
-                    } else {
-                        &alts[alts.len() - 1]
-                    };
+                Doc::Choice { flat, broken } => {
+                    let doc = if cmd.flat { flat } else { broken };
                     work.push(Cmd { doc, ..cmd });
                 }
             }

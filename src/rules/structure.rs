@@ -4,6 +4,7 @@
 use vhdl_syntax::syntax::{NodeKind as N, SyntaxNode, SyntaxToken};
 use vhdl_syntax::tokens::{Keyword as Kw, TokenKind as T};
 
+use super::select::{all_tokens, label, text};
 use super::{Context, Edit, Fix, FixSafety, Rule, RuleInfo, Violation, violation};
 use crate::config::{RuleSettings, Severity};
 
@@ -42,14 +43,7 @@ pub(super) fn rules() -> Vec<Rule> {
         "loop_statement_007",
         "`end loop` repeats the loop label.",
         |cx, s, out| {
-            closing_name(
-                cx,
-                s,
-                out,
-                "loop_statement_007",
-                N::LoopStatement,
-                statement_label,
-            );
+            closing_name(cx, s, out, "loop_statement_007", N::LoopStatement, label);
         },
     );
     loop_label_rule.info.enabled_by_default = false;
@@ -268,14 +262,7 @@ pub(super) fn rules() -> Vec<Rule> {
             "process_018",
             "`end process` repeats the process label.",
             |cx, s, out| {
-                closing_name(
-                    cx,
-                    s,
-                    out,
-                    "process_018",
-                    N::ProcessStatement,
-                    statement_label,
-                );
+                closing_name(cx, s, out, "process_018", N::ProcessStatement, label);
             },
         ),
         optional(
@@ -289,7 +276,7 @@ pub(super) fn rules() -> Vec<Rule> {
             "block_007",
             "`end block` repeats the block label.",
             |cx, s, out| {
-                closing_name(cx, s, out, "block_007", N::BlockStatement, statement_label);
+                closing_name(cx, s, out, "block_007", N::BlockStatement, label);
             },
         ),
         optional(
@@ -301,7 +288,7 @@ pub(super) fn rules() -> Vec<Rule> {
                     N::IfGenerateStatement,
                     N::CaseGenerateStatement,
                 ] {
-                    closing_name(cx, s, out, "generate_011", kind, statement_label);
+                    closing_name(cx, s, out, "generate_011", kind, label);
                 }
             },
         ),
@@ -351,12 +338,6 @@ pub(super) fn rules() -> Vec<Rule> {
     ]
 }
 
-fn tokens_of(n: &SyntaxNode) -> Vec<SyntaxToken> {
-    let mut out = Vec::new();
-    crate::collect_tokens(n, &mut out);
-    out
-}
-
 fn direct_token(n: &SyntaxNode, kind: T) -> Option<SyntaxToken> {
     n.children_with_tokens()
         .find_map(|c| c.as_token().filter(|t| t.kind() == kind))
@@ -401,13 +382,6 @@ fn is_preamble(k: N) -> bool {
 /// The name declared in a construct's preamble.
 fn preamble_identifier(n: &SyntaxNode) -> Option<SyntaxToken> {
     child(n, is_preamble).and_then(|p| direct_token(&p, T::Identifier))
-}
-
-fn statement_label(n: &SyntaxNode) -> Option<SyntaxToken> {
-    let label = child(n, |k| k == N::StmtLabel).or_else(|| {
-        child(n, |k| k == N::LoopStatementPreamble).and_then(|p| child(&p, |k| k == N::StmtLabel))
-    })?;
-    direct_token(&label, T::Identifier)
 }
 
 fn record_name(n: &SyntaxNode) -> Option<SyntaxToken> {
@@ -484,10 +458,6 @@ fn delete(cx: &Context<'_>, t: &SyntaxToken) -> Edit {
     }
 }
 
-fn text(t: &SyntaxToken) -> String {
-    String::from_utf8_lossy(t.text().as_bytes()).into_owned()
-}
-
 fn keyword_text(k: Kw) -> String {
     format!("{k:?}").to_ascii_lowercase()
 }
@@ -507,7 +477,7 @@ fn closing_keywords(
         let Some(epilogue) = child(n, is_epilogue) else {
             continue;
         };
-        let tokens = tokens_of(&epilogue);
+        let tokens = all_tokens(&epilogue);
         let Some(end) = tokens.first().filter(|t| t.kind() == T::Keyword(Kw::End)) else {
             continue;
         };
@@ -577,7 +547,7 @@ fn name_in_epilogue(
     out: &mut Vec<Violation>,
     rule: &'static str,
 ) {
-    let tokens = tokens_of(epilogue);
+    let tokens = all_tokens(epilogue);
     let closing = tokens
         .iter()
         .find(|t| matches!(t.kind(), T::Identifier | T::StringLiteral));
@@ -636,7 +606,7 @@ fn subprogram_keyword(
         let Some(epilogue) = child(body, |k| k == N::SubprogramBodyEpilogue) else {
             continue;
         };
-        let tokens = tokens_of(&epilogue);
+        let tokens = all_tokens(&epilogue);
         let present = tokens.iter().find(|t| t.kind() == T::Keyword(keyword));
         match (present, wants_removal(settings)) {
             (Some(t), true) => {
@@ -729,7 +699,7 @@ fn missing_label(
     what: &str,
 ) {
     for n in cx.nodes(kind) {
-        if statement_label(n).is_none() {
+        if label(n).is_none() {
             out.push(violation(
                 settings,
                 rule,

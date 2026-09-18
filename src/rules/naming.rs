@@ -5,14 +5,10 @@ use vhdl_syntax::tokens::{Keyword as Kw, TokenKind as T, TriviaPiece};
 
 use super::select::{
     child, children, clause_idents, declared, designators, formals, generate_labels, ident,
-    idents_of, labels_of, name_idents, tokens,
+    idents_of, labels_of, name_idents, text, tokens,
 };
 use super::{Check, Context, Edit, Fix, FixSafety, Rule, RuleInfo, Violation, violation};
 use crate::config::{RuleSettings, Severity};
-
-fn text(t: &SyntaxToken) -> String {
-    String::from_utf8_lossy(t.text().as_bytes()).into_owned()
-}
 
 fn rule(
     id: &'static str,

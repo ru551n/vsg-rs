@@ -73,7 +73,7 @@ fn is_word(b: u8) -> bool {
 
 /// Byte replacements for `edits` (sorted by offset and rank, non-conflicting), with spaces
 /// added so that inserted words do not fuse with adjacent words (`)begin` + ` is`).
-pub fn fix_edits(source: &[u8], edits: &[Edit]) -> Vec<TextEdit> {
+pub(crate) fn fix_edits(source: &[u8], edits: &[Edit]) -> Vec<TextEdit> {
     let mut out = Vec::with_capacity(edits.len());
     let mut pos = 0;
     let mut last = None;
@@ -177,7 +177,7 @@ pub fn fix_with(
     let mut fixed: Option<Parsed> = None;
     for _ in 0..MAX_ROUNDS {
         let current = fixed.as_ref().unwrap_or(parsed);
-        let mut violations = rules::check_for_fixes(current, config, options.project.as_deref());
+        let mut violations = rules::check_unformatted(current, config, options.project.as_deref());
         if let Some(only) = &options.only {
             violations.retain(|v| match only.get(v.rule) {
                 Some(None) => true,
@@ -212,7 +212,7 @@ pub fn fix_with(
     let remaining = if options.only.is_some() {
         rules::check_with(&result, config, options.project.as_deref())
     } else {
-        rules::check_canonical(&result, config, options.project.as_deref())
+        rules::check_unformatted(&result, config, options.project.as_deref())
     };
     Ok(FixOutcome {
         output: result.source().to_vec(),

@@ -217,7 +217,7 @@ struct Args {
     /// With --fix, print a unified diff instead of changing files (vsg-rs extension)
     #[arg(long)]
     diff: bool,
-    /// With --stdin --fix, change only lines START to END, 1-based (vsg-rs extension)
+    /// With --fix, change only lines START to END, 1-based (vsg-rs extension)
     #[arg(long, value_name = "START:END", value_parser = parse_line_range)]
     range: Option<(usize, usize)>,
     /// Path of the --stdin input, for configuration lookup and reports (vsg-rs extension)
@@ -233,6 +233,9 @@ struct Args {
     /// List every VSG rule and how vsg-rs handles it (vsg-rs extension)
     #[arg(long = "list_rules")]
     list_rules: bool,
+    /// Print how many violations each rule reports, over all inputs (vsg-rs extension)
+    #[arg(long)]
+    statistics: bool,
 }
 
 /// Parse `START:END` (1-based, inclusive line numbers).
@@ -472,6 +475,49 @@ fn summary_report(out: &mut String, r: &FileResult, rules_checked: usize) {
         "File: {} {status} ({rules_checked} rules checked) [Error: {errors}] [Warning: {warnings}]",
         r.name
     );
+}
+
+/// `--statistics`: violations per rule over all inputs, most first.
+fn statistics_report(results: &[FileResult], cfg: &Config) -> String {
+    use std::fmt::Write as _;
+    let mut counts: std::collections::HashMap<&str, (usize, std::collections::HashSet<&str>)> =
+        std::collections::HashMap::new();
+    for r in results {
+        for d in &r.violations {
+            let entry = counts.entry(&d.rule).or_default();
+            entry.0 += 1;
+            entry.1.insert(&r.name);
+        }
+    }
+    let mut rows: Vec<(&str, usize, usize)> = counts
+        .iter()
+        .map(|(rule, (n, files))| (*rule, *n, files.len()))
+        .collect();
+    rows.sort_by(|a, b| (b.1, a.0).cmp(&(a.1, b.0)));
+    let width = rows.iter().map(|(r, ..)| r.len()).max().unwrap_or(4).max(4);
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "{:width$}  {:>10}  {:>5}  --fix",
+        "rule", "violations", "files"
+    );
+    for (rule, n, files) in &rows {
+        // Layout is always fixed by formatting; a rule is fixed if its fixes are enabled.
+        let fixed = if is_layout(rule) || cfg.rule_by_id(rule).is_some_and(|s| s.fixable) {
+            "yes"
+        } else {
+            "no"
+        };
+        let _ = writeln!(out, "{rule:width$}  {n:>10}  {files:>5}  {fixed}");
+    }
+    let total: usize = rows.iter().map(|(_, n, _)| n).sum();
+    let files = results.iter().filter(|r| !r.violations.is_empty()).count();
+    let _ = writeln!(
+        out,
+        "\n{total} violation(s) of {} rule(s) in {files} file(s)",
+        rows.len()
+    );
+    out
 }
 
 fn json_report(results: &[FileResult]) -> String {
@@ -1334,6 +1380,9 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             OutputFormat::Syntastic => syntastic_report(&mut report, r),
             OutputFormat::Summary => summary_report(&mut report, r, rules_checked),
         }
+    }
+    if args.statistics {
+        report += &statistics_report(&results, &cfg);
     }
     // With `--stdin --fix` or `--diff`, stdout carries the source or diff; the report goes to
     // stderr.

@@ -64,7 +64,7 @@ scanning ([GitHub Action](github-action.md)):
 ```
 
 Instead of listing files, use `file_list` in the configuration (as in VSG) or
-`vsg-rs --recursive src`.
+`vsg-rs --recursive src`. On GitLab, see [GitLab CI](gitlab-ci.md).
 
 ## 5. pre-commit
 

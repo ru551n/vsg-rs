@@ -51,6 +51,8 @@ pub struct FormatConfig {
     pub close_paren_same_line: Vec<vhdl_syntax::syntax::NodeKind>,
     /// Continuation lines are indented instead of aligned (VSG `align_left`/`align_paren`).
     pub indent_continuations: bool,
+    /// Spaces before a trailing comment (VSG `comment_004`), where alignment does not decide.
+    pub comment_spaces: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +78,7 @@ impl Default for FormatConfig {
             mode_spacing: [(1, 4), (1, 3), (1, 1)],
             close_paren_same_line: Vec::new(),
             indent_continuations: false,
+            comment_spaces: 1,
         }
     }
 }
@@ -717,6 +720,28 @@ impl Config {
         })
         .map(|(_, kind)| kind)
         .collect();
+        // `comment_004` counts the spaces before an inline comment; `>=N` keeps wider source
+        // spacing, which the formatter approximates by taking N as the minimum.
+        if let Some(settings) = self.rule_by_id("comment_004").filter(|s| s.enabled) {
+            let text = settings
+                .option_str("number_of_spaces")
+                .map(str::to_owned)
+                .or_else(|| {
+                    settings
+                        .option_usize("number_of_spaces")
+                        .map(|n| n.to_string())
+                })
+                .unwrap_or_default();
+            let text = text.trim();
+            if let Ok(n) = text
+                .strip_prefix(">=")
+                .unwrap_or(text)
+                .trim()
+                .parse::<usize>()
+            {
+                self.format.comment_spaces = n.max(1);
+            }
+        }
         self.format.indent_continuations =
             ["concurrent_003", "sequential_004"].iter().any(|rule| {
                 self.rule_by_id(rule).is_some_and(|s| {

@@ -501,7 +501,7 @@ impl<'a> Builder<'a> {
         };
         let mut suffix = Vec::new();
         for c in comments(next, true).0.iter().filter(|c| c.trailing) {
-            suffix.push(b' ');
+            suffix.extend(std::iter::repeat_n(b' ', self.cfg.comment_spaces));
             suffix.extend_from_slice(&c.text);
         }
         if suffix.is_empty() {

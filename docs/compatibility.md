@@ -64,7 +64,7 @@ layout.
 | directories | reported as `source_file_001` (as in VSG); with `--recursive`, their VHDL files are checked |
 
 vsg-rs additions: `--unsafe_fixes`, `--diff`, `--range START:END`, `--stdin_filename PATH`,
-`--sarif FILE`, `--list_rules`, `--recursive`, and configuration discovery (`vsg-rs.yaml` / `.vsg-rs.yaml` /
+`--sarif FILE`, `--list_rules`, `--statistics`, `--recursive`, and configuration discovery (`vsg-rs.yaml` / `.vsg-rs.yaml` /
 `.json` next to the input) when `-c` is not given.
 
 ### Exit codes
@@ -123,7 +123,7 @@ disables every built-in rule, so that only the local rules run.
   and formats the copies' contents and writes the originals (or prints the diff). VSG then
   checks the result, and what the local rules still report is added. The copies have other
   paths than the originals, so `file_rules` patterns in the configuration do not match them in
-  VSG during fixing. With `--stdin --fix --range`, local rules only report.
+  VSG during fixing. With `--fix --range`, local rules only report.
 * If VSG cannot be started or fails, the error is printed and the exit code is 1.
 * VSG 3.35 crashes when the configuration sets `severity` for a local rule.
 

@@ -377,7 +377,7 @@ pub(crate) fn align_comments(parsed: Parsed, cfg: &FormatConfig) -> Vec<u8> {
         result.extend_from_slice(&source[pos..spaces]);
         result.extend(std::iter::repeat_n(
             b' ',
-            column.saturating_sub(code).max(1),
+            column.saturating_sub(code).max(cfg.comment_spaces),
         ));
         pos = comment;
     }

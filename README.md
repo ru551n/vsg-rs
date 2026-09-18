@@ -97,9 +97,10 @@ rules and lines, as in VSG.
 | `--unsafe_fixes` | with `--fix`, also apply fixes VSG does not apply by default; they may change behaviour or remove information, so review the result |
 | `--diff` | with `--fix`, print a unified diff instead of changing files |
 | `--stdin_filename PATH` | name of the `--stdin` input, used to find the configuration and in reports |
-| `--range START:END` | with `--stdin --fix`, change only these lines (1-based) |
+| `--range START:END` | with `--fix`, change only these lines (1-based), from stdin or a file |
 | `--sarif FILE` | write a SARIF 2.1.0 report (GitHub code scanning) |
 | `--list_rules` | list every VSG rule and how vsg-rs handles it |
+| `--statistics` | print the violations per rule over all inputs, most first |
 | `--recursive` | check the `.vhd` / `.vhdl` files in directories given as inputs, and in their subdirectories |
 
 With `--stdin --fix`, the fixed source is written to stdout and the report to stderr (VSG 3.35
@@ -214,7 +215,7 @@ The wheels install the `vsg-rs` executable. `python -m vsg_rs ...` runs it too, 
 * [Formatting](docs/formatting.md) (layout, alignment, blank lines, keyword case, indentation),
   [line folding](docs/line-folding.md) and its [coverage matrix](docs/line-folding-coverage.md)
 * [Migrating from VSG](docs/migrating-from-vsg.md) (including pre-commit and CI)
-* [GitHub Action](docs/github-action.md) and code scanning
+* [GitHub Action](docs/github-action.md) and code scanning, [GitLab CI](docs/gitlab-ci.md)
 * [Editor integration](docs/editors.md)
 * [Architecture](docs/architecture.md) and the [VHDL frontend](docs/vhdl-frontend.md)
   (why `vhdl_syntax`)

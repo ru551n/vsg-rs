@@ -391,3 +391,47 @@ fn local_rules_run_through_vsg() {
     assert_eq!(missing.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&missing.stderr).contains("does not exist"));
 }
+
+#[test]
+fn statistics_counts_violations_per_rule() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let a = write(dir.path(), "a.vhd", "entity E is\nend;\n");
+    let b = write(dir.path(), "b.vhd", "entity F is\nend;\n");
+    let out = vsg(
+        &[
+            "--statistics",
+            "-of",
+            "summary",
+            "-f",
+            a.to_str().unwrap(),
+            b.to_str().unwrap(),
+        ],
+        "",
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("rule"), "{text}");
+    // entity_008 (name case) is reported once per file, and its fixes are on by default.
+    let line = text
+        .lines()
+        .find(|l| l.starts_with("entity_008"))
+        .unwrap_or_else(|| panic!("{text}"));
+    let fields: Vec<&str> = line.split_whitespace().collect();
+    assert_eq!(fields, ["entity_008", "2", "2", "yes"], "{text}");
+    assert!(text.contains("in 2 file(s)"), "{text}");
+}
+
+#[test]
+fn range_limits_fixing_to_the_given_lines() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let src = "entity e is\nend entity e;\n\narchitecture a of e is\n\nbegin\n\n  x<=y;\n  z<=w;\n\nend architecture a;\n";
+    let file = write(dir.path(), "a.vhd", src);
+    let out = vsg(
+        &["--fix", "--range", "8:8", "-f", file.to_str().unwrap()],
+        "",
+    );
+    assert!(out.status.success(), "{out:?}");
+    let fixed = std::fs::read_to_string(&file).unwrap();
+    assert!(fixed.contains("  x <= y;"), "{fixed}");
+    // The line outside the range keeps its spacing.
+    assert!(fixed.contains("  z<=w;"), "{fixed}");
+}

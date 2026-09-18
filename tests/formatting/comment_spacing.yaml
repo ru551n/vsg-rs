@@ -1,0 +1,6 @@
+rule:
+  comment_004:
+    number_of_spaces: 3
+  group:
+    alignment:
+      disable: true

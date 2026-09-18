@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+* `--statistics` prints the violations per rule over all inputs, with how many files each
+  affects and whether `--fix` fixes it.
+* `comment_004` (`number_of_spaces`) sets the spaces before a trailing comment.
+* `--range` works with files, not only with `--stdin`.
+* A GitLab CI recipe (`docs/gitlab-ci.md`): code-quality report, JUnit and `--statistics`.
+
 ## 0.10.0
 
 Breaking for users of the Rust library; the command line, the configuration and the GitHub

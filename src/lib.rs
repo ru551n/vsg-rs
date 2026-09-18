@@ -13,8 +13,8 @@ mod format;
 pub mod indent;
 mod keywords;
 pub mod layout;
-pub mod rules;
 mod reflow;
+pub mod rules;
 mod verify;
 pub mod vsg_defaults;
 

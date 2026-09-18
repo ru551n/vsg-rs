@@ -84,7 +84,9 @@ pub(crate) fn comments(source: Vec<u8>, cfg: &FormatConfig) -> Vec<u8> {
     let mut off = false;
     while i < lines.len() {
         // A `fmt off` region is kept byte for byte, comments included.
-        let body = String::from_utf8_lossy(lines[i]).trim().to_ascii_lowercase();
+        let body = String::from_utf8_lossy(lines[i])
+            .trim()
+            .to_ascii_lowercase();
         let body = body.trim_start_matches('-').trim().to_owned();
         if body == "vsg-rs: fmt off" || body == "vsg_off" {
             off = true;
@@ -102,7 +104,10 @@ pub(crate) fn comments(source: Vec<u8>, cfg: &FormatConfig) -> Vec<u8> {
             i += 1;
             continue;
         };
-        let mut words: Vec<&[u8]> = first.split(|b| *b == b' ').filter(|w| !w.is_empty()).collect();
+        let mut words: Vec<&[u8]> = first
+            .split(|b| *b == b' ')
+            .filter(|w| !w.is_empty())
+            .collect();
         let end = lines[i + 1..]
             .iter()
             .position(|l| prose(l).is_none_or(|(ind, _)| ind != indent))

@@ -27,7 +27,11 @@ confidence-threshold = 0.9
 # Several versions of the same crate bloat the binary; list them here once reviewed.
 multiple-versions = "deny"
 wildcards = "deny"
-skip = []
+skip = [
+    # vhdl_lang's strum brings an older syn than clap's derive does. Nothing we can change
+    # without patching a dependency, and both are proc-macro only, so no binary bloat.
+    { crate = "syn@2", reason = "vhdl_lang -> strum_macros" },
+]
 
 [sources]
 unknown-registry = "deny"

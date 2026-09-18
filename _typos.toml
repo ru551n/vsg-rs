@@ -10,4 +10,10 @@ Leary = "Leary"
 
 [files]
 # VSG's bundled defaults and the learned tables are data, not prose.
-extend-exclude = ["src/vsg_defaults.json", "src/layout_rules.json", "src/spacing_rules.json"]
+extend-exclude = [
+    "src/vsg_defaults.json",
+    "src/layout_rules.json",
+    "src/spacing_rules.json",
+    # Third-party VHDL, embedded unmodified; their spelling is not ours to fix.
+    "vendor/",
+]

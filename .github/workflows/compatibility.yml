@@ -1,0 +1,58 @@
+# How close vsg-rs is to VSG 3.35, measured rather than asserted: both tools run over the same
+# corpus and the findings are compared per rule (scripts/compare_vsg.py). Weekly, because it
+# installs VSG and takes minutes; the numbers land in the job summary.
+name: Compatibility
+
+on:
+  schedule:
+    # 04:17 UTC on Mondays.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      files:
+        description: How many corpus files to compare
+        default: "200"
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      # VUnit's own VHDL is the corpus: real code, a fixed revision, and it exercises packages,
+      # testbenches and verification components.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: VUnit/vunit
+          ref: bbbe9caba5278dd8057020edc3aeb5f223c0e037
+          path: corpus
+          persist-credentials: false
+
+      - run: pip install --retries 10 --timeout 60 vsg==3.35.0
+      - run: cargo build --locked --release
+
+      - name: Compare
+        env:
+          HOW_MANY: ${{ inputs.files || '200' }}
+        run: |
+          # The third-party OSVVM copy under examples/ is not VUnit's own style.
+          find corpus/vunit/vhdl corpus/examples/vhdl -name '*.vhd' \
+            | grep -v osvvm | sort | head -n "$HOW_MANY" > files.txt
+          python3 scripts/compare_vsg.py --vsg vsg --vsg-rs target/release/vsg-rs \
+            --markdown "$GITHUB_STEP_SUMMARY" $(cat files.txt)
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: compatibility
+          path: .compare

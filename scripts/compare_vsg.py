@@ -65,6 +65,10 @@ def main() -> int:
     parser.add_argument("-c", "--config", action="append", default=[])
     parser.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     parser.add_argument("--out", default=".compare")
+    parser.add_argument(
+        "--markdown",
+        help="also write a summary table here (the GitHub job summary, for instance)",
+    )
     parser.add_argument("files", nargs="+")
     args = parser.parse_args()
 
@@ -109,6 +113,34 @@ def main() -> int:
     print()
     for k in sorted(total):
         print(f"{k}: {total[k]}")
+
+    agreement = {}
+    for kind in ("rule", "layout"):
+        both, only_t, only_o = (
+            total[f"{kind}: both"],
+            total[f"{kind}: VSG only"],
+            total[f"{kind}: vsg-rs only"],
+        )
+        seen = both + only_t + only_o
+        agreement[kind] = 100.0 * both / seen if seen else 100.0
+    if args.markdown:
+        lines = [
+            "## Compatibility with VSG 3.35",
+            "",
+            f"{len(files)} files.",
+            "",
+            "| Findings | Both | VSG only | vsg-rs only | Agreement |",
+            "|---|---|---|---|---|",
+        ]
+        for kind in ("rule", "layout"):
+            lines.append(
+                f"| {kind} | {total[f'{kind}: both']} | {total[f'{kind}: VSG only']} "
+                f"| {total[f'{kind}: vsg-rs only']} | {agreement[kind]:.1f}% |"
+            )
+        worst = sorted(rows, key=lambda r: -(r[2] + r[3]))[:15]
+        lines += ["", "Rules that differ most:", "", "| Rule | Both | VSG only | vsg-rs only |", "|---|---|---|---|"]
+        lines += [f"| `{r[0]}` | {r[1]} | {r[2]} | {r[3]} |" for r in worst if r[2] or r[3]]
+        Path(args.markdown).write_text("\n".join(lines) + "\n")
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

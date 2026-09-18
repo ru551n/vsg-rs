@@ -36,11 +36,14 @@ jobs:
       - name: Fuzz the formatter
         env:
           SECONDS_TO_RUN: ${{ inputs.seconds || '300' }}
+          TARGETS: format format_config
         # cargo-fuzz defaults to the target it was itself built for, and the prebuilt binary
         # is a musl one, whose static libc the sanitizer cannot use.
         run: |
           host=$(rustc -vV | sed -n 's/^host: //p')
-          cargo fuzz run --target "$host" format -- -max_total_time="$SECONDS_TO_RUN" -timeout=30
+          for target in $TARGETS; do
+            cargo fuzz run --target "$host" "$target" -- -max_total_time="$SECONDS_TO_RUN" -timeout=30
+          done
       - name: Keep what crashed
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

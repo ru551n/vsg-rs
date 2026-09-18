@@ -7,6 +7,13 @@
 * `comment_004` (`number_of_spaces`) sets the spaces before a trailing comment.
 * `--range` works with files, not only with `--stdin`.
 * A GitLab CI recipe (`docs/gitlab-ci.md`): code-quality report, JUnit and `--statistics`.
+* More layout violations report the VSG rule id instead of `format`: the learned table covers
+  410 kinds of token-pair change, up from 301. The same lines are reported, attributed more
+  precisely (on 150 VUnit files, `format` findings fall from 15118 to 11851).
+* A weekly job measures agreement with VSG 3.35 over VUnit's VHDL and writes the per-rule table
+  to the job summary (`scripts/compare_vsg.py --markdown`).
+* The fuzzer also generates configurations, so formatting has to be stable under any settings,
+  not only the default ones.
 
 ## 0.10.0
 

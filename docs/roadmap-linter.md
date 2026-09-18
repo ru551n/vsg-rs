@@ -21,6 +21,14 @@ so this is a second parse in a second phase, not a change to the formatter.
 - [ ] **Decide the rule-id namespace.** VSG compatibility means no invented `signal_0xx` ids.
       Proposal: a `semantic_*` namespace, every rule disabled by default, switched on with one
       `group: semantic: enable: true`. Blocks everything else in this section.
+- [ ] **Decide the engine: ingest GHDL, or embed `vhdl_lang`.** GHDL already emits most of the
+      checks below (`-Wsensitivity`, `-Wnowrite`, `-Wunused`, `-Wothers`, `-Wuseless`,
+      `-Wport-bounds`, `-Wbinding`) and is installed wherever VHDL is simulated; parsing its
+      diagnostics into vsg-rs findings is days of work, the way HDL Checker and TerosHDL do it,
+      but it adds an external tool and gives no control over the wording. Embedding `vhdl_lang`
+      is self-contained and gives real rule ids, at the cost of a second parse and a real
+      integration. Cheapest honest path: ship the GHDL ingest first, keep the rule ids stable,
+      swap the engine underneath later.
 - [ ] **Wire `vhdl_lang` in as an optional phase** behind a feature flag, so the default binary
       stays one fast parse. Map its `ErrorCode`s to vsg-rs findings and severities.
 - [ ] **Incomplete and superfluous sensitivity lists** (`MissingInSensitivityList`,
@@ -103,7 +111,17 @@ Everything in §1 beyond a single file needs to know what a library is.
 - [ ] *(Declined, and staying declined: a language server — `vhdl_ls` already is one; style
       presets; a configuration generator.)*
 
-## 7. Language coverage
+## 7. Distribution
+
+Being reachable matters as much as being good; the aggregators are where VHDL users already are.
+
+- [ ] **A TerosHDL backend.** Its VHDL style linter is VSG only today, and its formatter list is
+      VSG plus its own. vsg-rs is a drop-in for both, and faster.
+- [ ] **Emacs `vhdl-ext`** wires up `vhdl_ls`, GHDL and VSG; adding vsg-rs is a small patch.
+- [ ] **Keep the Bazel path in mind**: `hw-bzl/rules_vsg` exists for VSG, so a `rules_vsg_rs` or a
+      drop-in flag is cheap to offer.
+
+## 8. Language coverage
 
 - [ ] **VHDL-2019 mode views** and **conditional expressions in declarations** — currently
       unparsed (`compatibility.md`). Parser work, upstream.
@@ -115,8 +133,8 @@ Everything in §1 beyond a single file needs to know what a library is.
 ## The order I would actually do it in
 
 1. Waiver files and `--generate-waivers` (§3) — unblocks adoption on existing codebases.
-2. The rule-id namespace decision and the `vhdl_lang` phase (§1) — everything semantic waits on
-   it.
+2. The rule-id namespace and the engine decision, then the semantic phase (§1) — everything
+   semantic waits on both.
 3. Sensitivity lists, unused and dead code, latch inference (§1) — the three checks every RTL
    lint checklist opens with.
 4. `vhdl_ls.toml` library mapping (§2) — turns the rest of §1 on.

@@ -101,6 +101,40 @@ conditional expressions in declarations, and not PSL written as code; 3 of 3000 
 (0.1%) fail to parse for such reasons and are then reported and left untouched
 (`compatibility.md`). Linty's documentation does not state which VHDL revisions it accepts.
 
+## The rest of the landscape
+
+Checked 2026-09-18 (GitHub, PyPI and vendor documentation).
+
+| Tool | Licence | VHDL | Depth | Fixes |
+|---|---|---|---|---|
+| VSG | GPL-3.0 | yes (no 2019) | syntactic, per file | **yes** |
+| rust_hdl / `vhdl_ls` | MPL-2.0 | yes | name resolution, type checking, library map | rename only |
+| GHDL (`-W…`) | GPL-2.0 | yes (87–2019) | full analysis and elaboration | no |
+| NVC (`--check-synthesis`) | GPL-3.0 | yes | full analysis and elaboration | no |
+| Yosys + ghdl-yosys-plugin | ISC / GPL-3.0 | via GHDL synthesis | **netlist** | no |
+| TerosHDL | GPL-3.0 | wraps VHDL-LS, GHDL, ModelSim, Vivado, VSG | the backend's | via VSG |
+| Emacs `vhdl-mode` | GPL-3.0 | yes | syntactic | **yes** (beautifier) |
+| vhdl-linter, HDL Checker, VHDL-Tool | GPL-3.0 / closed | yes | varies | rename / none |
+| Verible, svlint, Surelog | Apache-2.0 / MIT | **no** (SystemVerilog only) | — | Verible: yes |
+| Aldec ALINT-PRO | commercial | **first class** (87–2008) | elaboration + netlist, FSM/CDC/RDC | no |
+| Synopsys VC SpyGlass, Siemens Questa Lint/AutoCheck, Cadence JasperGold Superlint, Real Intent Ascent, Blue Pearl | commercial | yes (SystemVerilog first) | elaboration, netlist, formal | no |
+| AMIQ DVT IDE, HDL Companion | commercial | yes | incremental compile / semantic | IDE quick fixes / none |
+| Vivado `report_methodology`, Quartus Design Assistant | free with the toolchain | yes | post-elaboration | no |
+
+Two conclusions worth stating plainly:
+
+* **Nothing commercial fixes VHDL.** Every commercial tool in this table reports and stops. Of
+  everything that fixes, only VSG, Emacs `vhdl-mode`, Sigasi's formatter and vsg-rs exist, and
+  only VSG and vsg-rs fix a configurable rule set from the command line.
+* **Only VSG competes on the same axis.** GHDL's warnings and `vhdl_ls` are complementary: they
+  find what vsg-rs structurally cannot, and neither fixes anything. TerosHDL and `vhdl-ext` are
+  distribution channels rather than competitors — TerosHDL's VHDL style linter is VSG only today.
+
+GHDL deserves a separate line: `-Wsensitivity`, `-Wnowrite`, `-Wunused`, `-Wothers`, `-Wuseless`,
+`-Wport-bounds` and `-Wbinding` are, between them, most of the semantic checks this page lists as
+missing — free, maintained, and already installed wherever VHDL is simulated. What it lacks is
+rule ids, severities, waivers and machine-readable output.
+
 ## What this means for vsg-rs
 
 In rough order of value per effort:

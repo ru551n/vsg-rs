@@ -132,8 +132,9 @@ Two conclusions worth stating plainly:
 
 GHDL deserves a separate line: `-Wsensitivity`, `-Wnowrite`, `-Wunused`, `-Wothers`, `-Wuseless`,
 `-Wport-bounds` and `-Wbinding` are, between them, most of the semantic checks this page lists as
-missing — free, maintained, and already installed wherever VHDL is simulated. What it lacks is
-rule ids, severities, waivers and machine-readable output.
+missing — free and maintained. It is worth knowing about, and worth recommending next to vsg-rs,
+but not worth shelling out to: a style check should not need a simulator installed. The engine
+for those checks belongs in the binary, as a crate (`roadmap-linter.md`).
 
 ## What this means for vsg-rs
 

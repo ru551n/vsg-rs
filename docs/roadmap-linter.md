@@ -21,16 +21,12 @@ so this is a second parse in a second phase, not a change to the formatter.
 - [ ] **Decide the rule-id namespace.** VSG compatibility means no invented `signal_0xx` ids.
       Proposal: a `semantic_*` namespace, every rule disabled by default, switched on with one
       `group: semantic: enable: true`. Blocks everything else in this section.
-- [ ] **Decide the engine: ingest GHDL, or embed `vhdl_lang`.** GHDL already emits most of the
-      checks below (`-Wsensitivity`, `-Wnowrite`, `-Wunused`, `-Wothers`, `-Wuseless`,
-      `-Wport-bounds`, `-Wbinding`) and is installed wherever VHDL is simulated; parsing its
-      diagnostics into vsg-rs findings is days of work, the way HDL Checker and TerosHDL do it,
-      but it adds an external tool and gives no control over the wording. Embedding `vhdl_lang`
-      is self-contained and gives real rule ids, at the cost of a second parse and a real
-      integration. Cheapest honest path: ship the GHDL ingest first, keep the rule ids stable,
-      swap the engine underneath later.
 - [ ] **Wire `vhdl_lang` in as an optional phase** behind a feature flag, so the default binary
       stays one fast parse. Map its `ErrorCode`s to vsg-rs findings and severities.
+      **The engine is a Rust library, never a subprocess.** GHDL's `-W` flags cover much of this
+      list, and wrapping them would be quicker, but it would make a style check depend on a
+      simulator being installed and on parsing another tool's prose. `vhdl_lang` is a crate from
+      the same project as the parser, so it stays one binary with no external tool.
 - [ ] **Incomplete and superfluous sensitivity lists** (`MissingInSensitivityList`,
       `SuperfluousInSensitivityList`, `DisallowedInSensitivityList`). Top of every RTL lint
       checklist; already implemented upstream.
@@ -51,6 +47,34 @@ so this is a second parse in a second phase, not a change to the formatter.
 - [ ] **Multiple drivers** on one signal across processes and concurrent assignments.
 - [ ] **Clock and reset heuristics**: a clock not used as a clock, mixed edges, mixed sync/async
       reset style, a register without a reset. Source level, the way Sigasi does them.
+
+### How it joins the style layer
+
+One report, three producers. `rules::Violation` is the join point and `Owner::Semantic` already
+exists, so the report, SARIF, JUnit, `--statistics`, severities, `file_rules`, waivers and exit
+codes stay one code path. Four rules keep the layers from contaminating each other:
+
+1. **Semantic findings never carry a fix** (`fix: None`, always). The fixer's safety net is the
+   verifier: output must re-parse with identical tokens and comments. A semantic fix changes
+   meaning by definition, so it cannot pass that check and must not try.
+2. **Semantic runs after fixing, on the final bytes.** A `--fix` run rewrites the file, so
+   positions from a pre-fix analysis would point at the wrong lines. Order: style check or fix,
+   write, then analyse what is now on disk.
+3. **A different unit of work, so a different phase.** Style is per file and parallel, which is
+   what the worker processes are for; semantic analysis needs the whole library at once. It runs
+   once per invocation in the parent, after the workers report — so the fast path never touches
+   the semantic engine.
+4. **Degrade, never fail.** Without a library map or with analysis errors, report the style
+   findings anyway and warn, the contract `local_rules` already has.
+
+Configuration stays one mental model: `semantic_*` ids live in the same `rule:` map, so `disable`,
+`severity` and `file_rules` work on them unchanged, with `group: semantic` to switch the set.
+
+- [ ] **Add a `kind` to findings** (layout / style / semantic). Needed for `--statistics`
+      grouping, SARIF tags, and CI gating such as "fail on semantic errors, warn on style" —
+      without it no team can adopt the semantic set incrementally.
+- [ ] **Keep it one binary.** Shared configuration and one report are worth more than a clean
+      split; the phase separation above is the isolation.
 
 ## 2. Project model
 
@@ -91,7 +115,9 @@ Everything in §1 beyond a single file needs to know what a library is.
 
 ## 5. Rule authoring
 
-- [x] VSG `local_rules` (runs an installed VSG).
+- [x] VSG `local_rules` (runs an installed VSG). The one place vsg-rs calls an external tool, and
+      it exists for VSG compatibility; it is opt-in and nothing else may follow that pattern. The
+      native rules below are what removes the need for it.
 - [ ] **Native custom rules without VSG**: a declarative query over the syntax tree (node kind,
       token pattern, optional name condition) written in YAML, so a team can add "no
       `std_logic_arith`", "entity name must match the file name" or "no `variable` in a clocked
@@ -133,8 +159,7 @@ Being reachable matters as much as being good; the aggregators are where VHDL us
 ## The order I would actually do it in
 
 1. Waiver files and `--generate-waivers` (§3) — unblocks adoption on existing codebases.
-2. The rule-id namespace and the engine decision, then the semantic phase (§1) — everything
-   semantic waits on both.
+2. The rule-id namespace, then the `vhdl_lang` phase (§1) — everything semantic waits on it.
 3. Sensitivity lists, unused and dead code, latch inference (§1) — the three checks every RTL
    lint checklist opens with.
 4. `vhdl_ls.toml` library mapping (§2) — turns the rest of §1 on.

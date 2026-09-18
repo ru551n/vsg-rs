@@ -106,56 +106,90 @@ fn is_not_combinational(process: &SyntaxNode) -> bool {
     text.contains("rising_edge(") || text.contains("falling_edge(") || text.contains("'event")
 }
 
-/// A latch needs a signal that some path assigns and another path does not. Only the shapes that
-/// say so without ambiguity are reported: an `if` with no `else` branch, and a `case` whose
-/// alternatives do not all assign the same signals.
-fn latches(process: &SyntaxNode) -> Vec<(String, usize)> {
-    // Signals the process assigns outside any branch always have a value, whatever follows.
-    // A process holds its statements directly; an `if` wraps its own in a `SequenceOfStatements`.
-    let mut unconditional: BTreeSet<String> = BTreeSet::new();
-    for part in find(process, NodeKind::ProcessStatementPart) {
-        for statement in part.children() {
-            if matches!(
-                statement.kind(),
-                NodeKind::IfStatement | NodeKind::CaseStatement
-            ) {
-                continue;
+/// The signals a sequence of statements assigns on *every* path through it.
+///
+/// A branch that cannot be shown to assign contributes nothing: an `if` without `else`, a `case`
+/// without `others`, a loop that may run zero times. That is what makes the difference between a
+/// default assignment (no latch) and a conditional one (latch).
+fn always_assigned(statements: &[SyntaxNode]) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for statement in statements {
+        match statement.kind() {
+            NodeKind::IfStatement => {
+                let Some(otherwise) = statement
+                    .children()
+                    .find(|c| c.kind() == NodeKind::IfStatementElse)
+                else {
+                    continue; // No `else`: some path assigns nothing.
+                };
+                let mut branches: Vec<BTreeSet<String>> = vec![always_assigned(&body(statement))];
+                branches.extend(
+                    statement
+                        .children()
+                        .filter(|c| c.kind() == NodeKind::IfStatementElsif)
+                        .map(|elsif| always_assigned(&body(&elsif))),
+                );
+                branches.push(always_assigned(&body(&otherwise)));
+                out.extend(intersection(branches));
             }
-            unconditional.extend(assignments(&statement).into_iter().map(|(name, _)| name));
+            NodeKind::CaseStatement => {
+                let alternatives: Vec<SyntaxNode> = statement
+                    .children()
+                    .filter(|c| c.kind() == NodeKind::CaseStatementAlternative)
+                    .collect();
+                // A case must cover its type, but only `others` says so without knowing the type.
+                let covers_everything = alternatives
+                    .iter()
+                    .any(|a| text_of(a).starts_with("whenothers"));
+                if !covers_everything || alternatives.is_empty() {
+                    continue;
+                }
+                out.extend(intersection(
+                    alternatives
+                        .iter()
+                        .map(|a| always_assigned(&body(a)))
+                        .collect(),
+                ));
+            }
+            kind if ASSIGNMENTS.contains(&kind) => {
+                out.extend(target(statement).map(|(name, _)| name));
+            }
+            _ => {}
         }
     }
+    out
+}
 
-    let mut out: BTreeMap<String, usize> = BTreeMap::new();
-    for statement in find(process, NodeKind::IfStatement) {
-        if statement
-            .children()
-            .any(|c| c.kind() == NodeKind::IfStatementElse)
-        {
-            continue;
-        }
-        for (name, offset) in assignments(&statement) {
-            if !unconditional.contains(&name) {
-                out.entry(name).or_insert(offset);
-            }
-        }
+fn intersection(sets: Vec<BTreeSet<String>>) -> BTreeSet<String> {
+    let mut iter = sets.into_iter();
+    let first = iter.next().unwrap_or_default();
+    iter.fold(first, |acc, set| &acc & &set)
+}
+
+/// The statements a node holds: those of its `SequenceOfStatements`, or its own children when it
+/// keeps them directly, as a process does.
+fn body(node: &SyntaxNode) -> Vec<SyntaxNode> {
+    let sequences: Vec<SyntaxNode> = node
+        .children()
+        .filter(|c| c.kind() == NodeKind::SequenceOfStatements)
+        .collect();
+    if sequences.is_empty() {
+        return node.children().collect();
     }
-    for statement in find(process, NodeKind::CaseStatement) {
-        let alternatives: Vec<BTreeSet<String>> =
-            find(&statement, NodeKind::CaseStatementAlternative)
-                .iter()
-                .map(|a| assignments(a).into_iter().map(|(name, _)| name).collect())
-                .collect();
-        let Some(first) = alternatives.first() else {
-            continue;
-        };
-        let everywhere = alternatives
-            .iter()
-            .skip(1)
-            .fold(first.clone(), |acc, set| &acc & set);
-        for (name, offset) in assignments(&statement) {
-            if !unconditional.contains(&name) && !everywhere.contains(&name) {
-                out.entry(name).or_insert(offset);
-            }
+    sequences.iter().flat_map(SyntaxNode::children).collect()
+}
+
+/// Signals a process assigns somewhere but not on every path: each has to remember its value.
+fn latches(process: &SyntaxNode) -> Vec<(String, usize)> {
+    let statements: Vec<SyntaxNode> = find(process, NodeKind::ProcessStatementPart)
+        .iter()
+        .flat_map(body)
+        .collect();
+    let always = always_assigned(&statements);
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+    for (name, offset) in assignments(process) {
+        if !always.contains(&name) {
+            out.entry(name).or_insert(offset);
         }
     }
     out.into_iter().collect()
@@ -283,6 +317,45 @@ mod tests {
         assert!(
             !found.iter().any(|(rule, _)| *rule == "lint_600"),
             "a testbench process is not combinational logic, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_default_inside_a_branch_prevents_the_latch() {
+        let found = check_source(&format!(
+            "{PREAMBLE}  p : process (a, b) is\n  begin\n    if a = '1' then\n      \
+             d <= '0';\n      if b = '1' then\n        d <= '1';\n      end if;\n    else\n      \
+             d <= '0';\n    end if;\n  end process;\nend architecture;\n"
+        ));
+        assert!(
+            !found.iter().any(|(rule, _)| *rule == "lint_600"),
+            "every path assigns d, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_nested_if_without_else_is_a_latch() {
+        let found = check_source(&format!(
+            "{PREAMBLE}  p : process (a, b) is\n  begin\n    if a = '1' then\n      \
+             c <= '1';\n      if b = '1' then\n        d <= '1';\n      end if;\n    else\n      \
+             c <= '0';\n      d <= '0';\n    end if;\n  end process;\nend architecture;\n"
+        ));
+        assert!(
+            found.iter().any(|(rule, _)| *rule == "lint_600"),
+            "a = '1' with b = '0' leaves d unassigned, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_case_with_others_assigning_everywhere_is_not_a_latch() {
+        let found = check_source(&format!(
+            "{PREAMBLE}  p : process (a) is\n  begin\n    case a is\n      when '0' =>\n        \
+             c <= '0';\n      when others =>\n        c <= '1';\n    end case;\n  \
+             end process;\nend architecture;\n"
+        ));
+        assert!(
+            !found.iter().any(|(rule, _)| *rule == "lint_600"),
+            "every alternative assigns c, got {found:?}"
         );
     }
 

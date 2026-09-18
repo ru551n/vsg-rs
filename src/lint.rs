@@ -44,7 +44,7 @@ pub(crate) struct Analysis {
 /// what the project's libraries are.
 ///
 /// Without a library map every name from another library is unresolved, and an unresolved name
-/// makes the rules that depend on resolution produce nonsense: on 50 VUnit files, 9968
+/// makes the rules that depend on resolution produce nonsense: on 50 `VUnit` files, 9968
 /// `lint_100` findings and 623 knock-on `lint_302`. Reporting those by default would make the
 /// first run useless, so they wait until the project says where its libraries are.
 pub(crate) fn needs_no_library_map(rule: &str) -> bool {

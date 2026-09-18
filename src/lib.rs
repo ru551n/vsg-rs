@@ -14,6 +14,7 @@ pub mod indent;
 mod keywords;
 pub mod layout;
 pub mod rules;
+mod reflow;
 mod verify;
 pub mod vsg_defaults;
 
@@ -314,6 +315,8 @@ pub fn format_parsed(parsed: &Parsed, cfg: &FormatConfig) -> Result<Vec<u8>, For
     // Only changes the spaces between code and a trailing comment on the same line, which
     // cannot change the verified tokens and comments.
     let out = align::align_comments(printed, cfg);
+    // Comment text only, after the code is laid out and verified.
+    let out = reflow::comments(out, cfg);
     let mut out = parsed.restore_directives(out);
     let crlf = match cfg.line_ending {
         Some(ending) => ending == config::LineEnding::CrLf,

@@ -131,6 +131,22 @@ See `compatibility.md` for the VSG configuration mapping. Formatter settings: wi
 `length_001.length`, default 120), `indent_size` (default 2), `indent_style` (`spaces` or
 `smart_tabs`), keyword case, blank-line and alignment rules, and `linesep`.
 
+## Comment reflowing (extension)
+
+VSG has no rule that re-wraps comments, so this is off unless the configuration asks for it:
+
+```yaml
+vsg_rs:
+  reflow_comments: true
+```
+
+Runs of own-line `-- ` comments that share their indentation are then joined and re-wrapped to
+the line width. Comments whose line breaks carry meaning are left alone: `---`, `--!` and `--=`
+banners, lines starting with a list marker (`*`, `-`, `+`, a digit) or with extra indentation,
+lines holding a table (`|`) or a tab, tool directives (`vsg_off`, `pragma`, `synthesis`, ...),
+anything inside a formatter-off region, and every trailing comment. Reflowing rewrites the
+header comment of a file too, so try it with `--diff` before turning it on for a repository.
+
 ## Formatter-off regions
 
 ```vhdl

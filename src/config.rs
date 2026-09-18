@@ -53,6 +53,8 @@ pub struct FormatConfig {
     pub indent_continuations: bool,
     /// Spaces before a trailing comment (VSG `comment_004`), where alignment does not decide.
     pub comment_spaces: usize,
+    /// Re-wrap comment paragraphs to `width` (vsg-rs extension `vsg_rs: reflow_comments`).
+    pub reflow_comments: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +81,7 @@ impl Default for FormatConfig {
             close_paren_same_line: Vec::new(),
             indent_continuations: false,
             comment_spaces: 1,
+            reflow_comments: false,
         }
     }
 }
@@ -362,11 +365,28 @@ impl Config {
                     merge_raw(&mut self.raw_pragma, value);
                 }
                 "indent" => merge_raw(&mut self.raw_indent, value),
+                "vsg_rs" => self.merge_extensions(value)?,
                 "local_rules" => {
                     let dir = value.as_str().ok_or("`local_rules` must be a directory")?;
                     self.local_rules = Some(expand_path(dir));
                 }
                 _ => self.warn(&format!("unknown top-level key `{key}` ignored")),
+            }
+        }
+        Ok(())
+    }
+
+    /// `vsg_rs:` holds the options VSG does not have, kept out of its namespace.
+    fn merge_extensions(&mut self, value: &Value) -> Result<(), String> {
+        let map = value.as_mapping().ok_or("`vsg_rs` must be a mapping")?;
+        for (key, value) in map {
+            match key.as_str().unwrap_or_default() {
+                "reflow_comments" => {
+                    self.format.reflow_comments = value
+                        .as_bool()
+                        .ok_or("`reflow_comments` must be true or false")?;
+                }
+                key => self.warn(&format!("unknown `vsg_rs` key `{key}` ignored")),
             }
         }
         Ok(())

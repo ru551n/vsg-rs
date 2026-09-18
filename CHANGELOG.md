@@ -12,6 +12,8 @@
   precisely (on 150 VUnit files, `format` findings fall from 15118 to 11851).
 * A weekly job measures agreement with VSG 3.35 over VUnit's VHDL and writes the per-rule table
   to the job summary (`scripts/compare_vsg.py --markdown`).
+* `vsg_rs: reflow_comments` re-wraps comment paragraphs to the line width (off by default; VSG
+  has no such rule). Structured comments, directives and formatter-off regions are left alone.
 * The fuzzer also generates configurations, so formatting has to be stable under any settings,
   not only the default ones.
 

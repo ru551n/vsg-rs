@@ -12,8 +12,11 @@
 use libfuzzer_sys::fuzz_target;
 use vsg_rs::{Config, Parsed};
 
+fn pick<'a>(byte: u8, options: &[&'a str]) -> &'a str {
+    options[byte as usize % options.len()]
+}
+
 fn configuration(knobs: &[u8; 4]) -> String {
-    let pick = |byte: u8, options: &[&str]| options[byte as usize % options.len()];
     let mut yaml = String::from("rule:\n  global:\n");
     yaml += &format!("    case: {}\n", pick(knobs[0], &["lower", "upper"]));
     yaml += &format!("    indent_size: {}\n", pick(knobs[0] >> 1, &["2", "3", "4"]));

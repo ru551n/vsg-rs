@@ -62,6 +62,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
           toolchain: stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: nightly
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908 # v2
         with:
@@ -69,6 +72,9 @@ jobs:
       - run: cargo test --locked --workspace --doc
       - uses: crate-ci/typos@512fc24f32f44ab01972217aaaf3dc86ec234d53 # v1.50.2
       - run: cargo machete
+      # The fuzz targets are a separate crate on nightly, so nothing else compiles them; without
+      # this a broken target is only found by the nightly fuzz run, seven minutes in.
+      - run: cargo +nightly check --manifest-path fuzz/Cargo.toml --bins
 
   # How much of the code the tests reach; a number per pull request, not a gate.
   coverage:

@@ -175,7 +175,7 @@ impl Naming {
 }
 
 /// Whether a process is clocked: it tests a clock edge, so what it assigns becomes a register.
-fn is_clocked(process: &SyntaxNode) -> bool {
+pub(crate) fn is_clocked(process: &SyntaxNode) -> bool {
     let text = text_of(process);
     text.contains("rising_edge(") || text.contains("falling_edge(") || text.contains("'event")
 }

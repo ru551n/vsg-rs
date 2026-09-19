@@ -118,6 +118,18 @@ directories (`tb_`, `_tb`, `test/`, `sim/`, `bench/`, ...). Over three corpora t
 `--debug` prints every file treated as a testbench and which of those signals matched, so the
 classification is never silent.
 
+### State machines
+
+`lint_710` and `lint_711` read a state machine out of the source the way a synthesis tool
+recognises one: an enumerated type, a signal of it registered under a clock, and a `case` on that
+signal deciding the next state. Both one- and two-process styles work, because every signal of
+the state type is considered together.
+
+The machine has to be readable with certainty or it is left alone: every assignment to the state
+must be a plain value of the type, since a state computed by a function cannot be reasoned about
+from syntax. A `case` that never assigns the state is a multiplexer selecting by state, not
+transition logic, and is not checked for exits.
+
 ### Wiring
 
 `lint_730` needs to know what an instance does to the signals connected to it, so the run first
@@ -165,6 +177,8 @@ none that were real.
 | `lint_003` | An item that may not appear in a sensitivity list |
 | `lint_600` | A combinational process does not assign a signal on every path: a latch |
 | `lint_601` | A signal is assigned by more than one concurrent statement |
+| `lint_710` | A state of an enumerated state machine is never entered |
+| `lint_711` | A state of an enumerated state machine has no exit |
 | `lint_730` | A signal is read but nothing drives it: no assignment, and no instance output |
 
 ### Naming registers (off by default)

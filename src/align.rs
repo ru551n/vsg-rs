@@ -16,6 +16,7 @@ use crate::rules::RuleInfo;
 /// One alignment policy and how its groups are delimited (VSG's yes/no options).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
+#[non_exhaustive]
 pub struct Family {
     pub enabled: bool,
     /// A blank line starts a new group.
@@ -45,6 +46,7 @@ impl Family {
 /// Alignment settings resolved from the configuration.
 #[allow(clippy::struct_excessive_bools)] // One switch per VSG alignment rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AlignSettings {
     /// Names after the declaration keywords (`architecture_029`).
     pub declaration_names: Family,

@@ -9,7 +9,9 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 
 * `--sonarqube FILE` writes SonarQube's generic issue JSON. SonarQube reads SARIF too, but files
   every SARIF issue as a vulnerability; this format carries the type, so the lint layer arrives as
-  a bug and style as a code smell. Jenkins needs nothing new — Warnings-NG parses the SARIF file.
+  a bug and style as a code smell. Severity separates what needs a person from what does not: a
+  finding `--fix` repairs is `INFO`, a lint finding is `CRITICAL`. Jenkins needs nothing new —
+  Warnings-NG parses the SARIF file.
 * `lint_740` reports a vector assigned to one of a different width — legal VHDL that fails only
   when the design elaborates. It measures only whole objects with literal ranges, so what it
   reports is certain.

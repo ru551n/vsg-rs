@@ -284,18 +284,31 @@ fn sonarqube_report_carries_the_layer_as_the_issue_type() {
             "CODE_SMELL"
         };
         assert_eq!(issue["type"], expected, "{rule}");
-        assert!(["MAJOR", "MINOR"].contains(&issue["severity"].as_str().unwrap_or_default()));
+        let severity = issue["severity"].as_str().unwrap_or_default();
+        assert!(
+            ["INFO", "MINOR", "MAJOR", "CRITICAL"].contains(&severity),
+            "{rule}: {severity}"
+        );
+        // A lint finding never carries a fix, so it is never filed as trivially fixable.
+        if rule.starts_with("lint_") {
+            assert_ne!(severity, "INFO", "{rule}");
+        }
         let range = &issue["primaryLocation"]["textRange"];
         assert!(range["startLine"].as_u64().unwrap_or_default() >= 1);
         // SonarQube counts columns from zero, so the report never carries a negative one.
         assert!(range["startColumn"].as_i64().unwrap_or_default() >= 0);
     }
-    // The latch this file infers is reported, and as a bug.
+    // The latch this file infers is reported, as a bug, and as something to act on.
     assert!(
-        issues
-            .iter()
-            .any(|i| i["ruleId"] == "lint_600" && i["type"] == "BUG"),
+        issues.iter().any(|i| i["ruleId"] == "lint_600"
+            && i["type"] == "BUG"
+            && i["severity"] == "CRITICAL"),
         "the lint layer reaches the report"
+    );
+    // The misplaced `begin` is layout, which --fix repairs, so it is filed as informational.
+    assert!(
+        issues.iter().any(|i| i["severity"] == "INFO"),
+        "a fixable finding is not technical debt"
     );
 }
 

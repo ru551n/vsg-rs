@@ -29,8 +29,26 @@ it from the layer the finding came from:
 * the lint layer (`lint_*`) arrives as a **bug** — it says the hardware is wrong;
 * style and layout arrive as a **code smell** — they say it reads badly.
 
-Severity follows the rule's own: an error becomes `MAJOR`, a warning `MINOR`. Columns are
-converted, because SonarQube counts them from zero and every other format here counts from one.
+Severity separates the findings you have to think about from the ones you do not:
+
+| Severity | What it is |
+|---|---|
+| `INFO` | `--fix` repairs it on its own — one run removes all of them at once |
+| `MINOR` | the rule is configured as a warning |
+| `MAJOR` | style that needs a person: a name, a port mode, an instantiation |
+| `CRITICAL` | a lint finding — a latch, two drivers, a clock crossing |
+
+Fixability is asked of each finding rather than of its rule, because the same rule can offer a
+safe fix in one place and none in another. On open-logic that splits 33,693 issues into 32,003
+`INFO`, 653 `MAJOR`, 124 `MINOR` and 913 `CRITICAL` — and running `--fix` takes the `INFO` count
+to zero while leaving every `MAJOR` in place, which is what makes the distinction worth having.
+
+It is deliberately conservative: a finding is only `INFO` when a safe fix is attached to it, so
+the report never hides something as trivial that is not. The exit code is unaffected — an `INFO`
+violation still fails the run, it just does not pretend to be technical debt.
+
+Columns are converted, because SonarQube counts them from zero and every other format here counts
+from one.
 
 ## Jenkins
 

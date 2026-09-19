@@ -24,6 +24,10 @@ struct Diagnostic {
     /// `error` or `warning`.
     severity: String,
     message: String,
+    /// Whether `--fix` removes this one without anybody reading it. Per finding rather than per
+    /// rule, because the same rule can offer a safe fix in one place and none in another.
+    #[serde(default)]
+    fixable: bool,
 }
 
 /// Which layer a finding came from, derived from its rule id so that it cannot disagree with
@@ -50,6 +54,10 @@ fn diagnostic(parsed: &Parsed, v: &Violation) -> Diagnostic {
         rule: v.rule.to_owned(),
         severity: v.severity.to_string(),
         message: v.message.clone(),
+        fixable: v
+            .fix
+            .as_ref()
+            .is_some_and(|f| f.safety == rules::FixSafety::Safe),
     }
 }
 
@@ -90,6 +98,7 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
             rule: rule.to_owned(),
             severity: "error".into(),
             message: vsg_rs::layout::message(&change, cfg.format.indent),
+            fixable: true,
         });
     }
     if out.is_empty() {
@@ -100,6 +109,7 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
             rule: "format".into(),
             severity: "error".into(),
             message: "File is not formatted".into(),
+            fixable: true,
         });
     }
     out
@@ -761,6 +771,29 @@ fn quality_report(results: &[FileResult]) -> String {
     serde_json::to_string_pretty(&issues).unwrap_or_default()
 }
 
+/// How much a finding should weigh in SonarQube, which grades on five levels where vsg-rs has
+/// two. The layer supplies what the severity alone cannot:
+///
+/// * anything `--fix` repairs on its own is `INFO`, because one run removes all of it at once.
+///   Without this, a large code base arrives as tens of thousands of items indistinguishable
+///   from the ones a person has to sit down and think about, and the few that need a decision
+///   are buried by the count. This is asked of each finding rather than of its rule, because the
+///   same rule can offer a safe fix in one place and none in another.
+/// * a lint finding is `CRITICAL`: a latch, two drivers or a clock crossing is a defect in the
+///   hardware, not an opinion about it.
+/// * a rule configured as a warning stays `MINOR`, since that is the project saying so.
+///
+/// The exit code is unaffected: a fixable violation still fails the run, it just does not
+/// pretend to be technical debt.
+fn sonar_severity(kind: &str, severity: &str, fixable: bool) -> &'static str {
+    match (kind, severity, fixable) {
+        (_, _, true) => "INFO",
+        (_, "warning", _) => "MINOR",
+        ("lint", _, _) => "CRITICAL",
+        _ => "MAJOR",
+    }
+}
+
 /// SonarQube's generic issue format, for `sonar.externalIssuesReportPaths`.
 ///
 /// SonarQube also reads SARIF, which vsg-rs already writes, but it files every SARIF issue as a
@@ -779,12 +812,13 @@ fn sonar_report(results: &[FileResult]) -> String {
             {
                 range.insert("startColumn".to_owned(), column.into());
             }
+            let kind = kind_of(&d.rule);
             serde_json::json!({
                 "engineId": "vsg-rs",
                 "ruleId": d.rule,
                 // A lint finding says the hardware is wrong; a style one says it reads badly.
-                "type": if kind_of(&d.rule) == "lint" { "BUG" } else { "CODE_SMELL" },
-                "severity": if d.severity == "warning" { "MINOR" } else { "MAJOR" },
+                "type": if kind == "lint" { "BUG" } else { "CODE_SMELL" },
+                "severity": sonar_severity(kind, &d.severity, d.fixable),
                 "primaryLocation": {
                     "message": d.message,
                     "filePath": r.name,
@@ -1046,6 +1080,7 @@ fn directory_result(name: String) -> FileResult {
             rule: "source_file_001".into(),
             severity: "error".into(),
             message: "Is a directory".into(),
+            fixable: false,
         }],
         error: None,
         output: None,
@@ -1138,6 +1173,8 @@ fn check_local_rules(
                 rule: finding.rule,
                 severity: finding.severity,
                 message: finding.message,
+                // A VSG rule plugin reports; vsg-rs does not know how to fix what it found.
+                fixable: false,
             });
         }
     }
@@ -1690,6 +1727,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                                 severity: settings
                                     .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
                                 message: f.message,
+                                // A lint finding never carries a fix.
+                                fixable: false,
                             },
                         ))
                     })
@@ -1743,6 +1782,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                         severity: settings
                             .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
                         message: f.message,
+                        fixable: false,
                     });
                 }
                 for r in &mut results {
@@ -1938,6 +1978,7 @@ mod tests {
                     rule: rule.into(),
                     severity: severity.into(),
                     message: "Add *entity* keyword".into(),
+                    fixable: false,
                 })
                 .collect(),
             error: None,

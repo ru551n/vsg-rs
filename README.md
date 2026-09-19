@@ -95,6 +95,7 @@ a reason, and never affect the exit code.
 | `--range START:END` | with `--fix`, change only these lines |
 | `--stdin_filename PATH` | name of the `--stdin` input, for configuration lookup and reports |
 | `--sarif FILE` | SARIF 2.1.0, for GitHub code scanning |
+| `--sonarqube FILE` | SonarQube generic issue JSON |
 | `--recursive` | check the VHDL files in directories and their subdirectories |
 | `--list_rules`, `--statistics` | what each rule is, and how often each fired |
 
@@ -106,7 +107,9 @@ file.
 
 A [GitHub Action](https://vsg-rs.readthedocs.io/en/latest/github-action/) posts annotations and
 suggested changes; [GitLab CI](https://vsg-rs.readthedocs.io/en/latest/gitlab-ci/) gets the
-code-quality report. SARIF, JUnit and `--statistics` work anywhere.
+code-quality report, and SonarQube the generic issue JSON. Jenkins reads the SARIF file through
+Warnings-NG. Every [report format](https://vsg-rs.readthedocs.io/en/latest/reports/) works
+anywhere.
 
 ```yaml
 - uses: ru551n/vsg-rs@v0.11.0

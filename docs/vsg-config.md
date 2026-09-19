@@ -207,6 +207,7 @@ note below):
 | — | `--stdin` | Read one file's VHDL from stdin; disables file selection and multiprocessing. |
 | — | `--force_fix` | Alpha: apply fixes even if syntax errors are present (see `upstream-limitations.md` L7 — this doesn't guarantee the *output* stays valid). |
 | — | `--quality_report FILE` | GitLab code-quality JSON report. |
+| — | `--sonarqube FILE` | SonarQube generic issue JSON (`sonar.externalIssuesReportPaths`); see [reports](reports.md). |
 | `-p N` | `--jobs` | Parallel worker count (default: CPU core count). |
 | — | `--debug` | Verbose internal debug output. |
 

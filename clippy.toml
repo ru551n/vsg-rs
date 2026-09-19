@@ -1,1 +1,1 @@
-doc-valid-idents = ["JUnit", ".."]
+doc-valid-idents = ["JUnit", "SonarQube", ".."]

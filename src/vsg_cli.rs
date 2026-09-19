@@ -220,6 +220,9 @@ struct Args {
     /// Create code quality report for GitLab
     #[arg(long = "quality_report", value_name = "QUALITY_REPORT")]
     quality_report: Option<PathBuf>,
+    /// Write SonarQube generic issue JSON (sonar.externalIssuesReportPaths)
+    #[arg(long = "sonarqube", value_name = "SONARQUBE")]
+    sonarqube: Option<PathBuf>,
     /// number of parallel jobs to use, default is the number of cpu cores
     #[arg(short = 'p', long, value_name = "JOBS")]
     jobs: Option<usize>,
@@ -756,6 +759,41 @@ fn quality_report(results: &[FileResult]) -> String {
         })
         .collect();
     serde_json::to_string_pretty(&issues).unwrap_or_default()
+}
+
+/// SonarQube's generic issue format, for `sonar.externalIssuesReportPaths`.
+///
+/// SonarQube also reads SARIF, which vsg-rs already writes, but it files every SARIF issue as a
+/// vulnerability. A style violation is not a security finding, and a few hundred of them would
+/// bury the project's real ones. This format carries the type, so the lint layer arrives as a
+/// bug and everything else as a code smell.
+fn sonar_report(results: &[FileResult]) -> String {
+    let issues: Vec<serde_json::Value> = results
+        .iter()
+        .flat_map(|r| by_rule(r).into_iter().map(move |d| (r, d)))
+        .map(|(r, d)| {
+            let mut range = serde_json::json!({ "startLine": d.line });
+            // SonarQube counts columns from zero, and every report format here from one.
+            if let Some(column) = d.column.checked_sub(1)
+                && let Some(range) = range.as_object_mut()
+            {
+                range.insert("startColumn".to_owned(), column.into());
+            }
+            serde_json::json!({
+                "engineId": "vsg-rs",
+                "ruleId": d.rule,
+                // A lint finding says the hardware is wrong; a style one says it reads badly.
+                "type": if kind_of(&d.rule) == "lint" { "BUG" } else { "CODE_SMELL" },
+                "severity": if d.severity == "warning" { "MINOR" } else { "MAJOR" },
+                "primaryLocation": {
+                    "message": d.message,
+                    "filePath": r.name,
+                    "textRange": range,
+                },
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&serde_json::json!({ "issues": issues })).unwrap_or_default()
 }
 
 /// A file name as a SARIF URI: relative to the working directory with `/` separators (as code
@@ -1866,11 +1904,12 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     } else {
         print!("{report}");
     }
-    let outputs: [(&Option<PathBuf>, Render); 4] = [
+    let outputs: [(&Option<PathBuf>, Render); 5] = [
         (&args.json, json_report),
         (&args.sarif, sarif_report),
         (&args.junit, junit_report),
         (&args.quality_report, quality_report),
+        (&args.sonarqube, sonar_report),
     ];
     for (path, render) in outputs {
         if let Some(path) = path

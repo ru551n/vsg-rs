@@ -50,6 +50,7 @@ nav:
   - Continuous integration:
       - GitHub Action: github-action.md
       - GitLab CI: gitlab-ci.md
+      - Report formats: reports.md
   - Compatibility with VSG:
       - Measured compatibility: compatibility.md
       - Rule status: rule-status.md

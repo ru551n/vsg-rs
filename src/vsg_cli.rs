@@ -28,6 +28,9 @@ struct Diagnostic {
     /// rule, because the same rule can offer a safe fix in one place and none in another.
     #[serde(default)]
     fixable: bool,
+    /// The other places this finding is about; see `lint::Related`.
+    #[serde(default)]
+    related: Vec<crate::lint::Related>,
 }
 
 /// Which layer a finding came from, derived from its rule id so that it cannot disagree with
@@ -64,6 +67,8 @@ fn diagnostic(parsed: &Parsed, v: &Violation) -> Diagnostic {
             .fix
             .as_ref()
             .is_some_and(|f| f.safety == rules::FixSafety::Safe),
+        // Style rules point at one place; the lint layer fills this in.
+        related: Vec::new(),
     }
 }
 
@@ -105,6 +110,7 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
             severity: "error".into(),
             message: vsg_rs::layout::message(&change, cfg.format.indent),
             fixable: true,
+            related: Vec::new(),
         });
     }
     if out.is_empty() {
@@ -116,6 +122,7 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
             severity: "error".into(),
             message: "File is not formatted".into(),
             fixable: true,
+            related: Vec::new(),
         });
     }
     out
@@ -562,6 +569,15 @@ fn vsg_report(out: &mut String, r: &FileResult, rules_checked: usize) {
             d.line,
             d.message
         );
+        // The other places the finding is about, one per line under it. A style rule has none,
+        // so a run without the lint layer prints exactly what it printed before.
+        for related in &d.related {
+            let _ = writeln!(
+                out,
+                "  {:width$}| {:11}|{:>11} |   {}",
+                "", "", related.line, related.message
+            );
+        }
     }
     let _ = writeln!(out, "{separator}");
     let _ = writeln!(
@@ -1093,6 +1109,7 @@ fn directory_result(name: String) -> FileResult {
             severity: "error".into(),
             message: "Is a directory".into(),
             fixable: false,
+            related: Vec::new(),
         }],
         error: None,
         output: None,
@@ -1214,6 +1231,7 @@ fn check_local_rules(
                 message: finding.message,
                 // A VSG rule plugin reports; vsg-rs does not know how to fix what it found.
                 fixable: false,
+                related: Vec::new(),
             });
         }
     }
@@ -1414,6 +1432,7 @@ fn lint_files(
                             message: f.message,
                             // A lint finding never carries a fix.
                             fixable: false,
+                            related: f.related,
                         },
                     ))
                 })
@@ -1942,6 +1961,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                             .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
                         message: f.message,
                         fixable: false,
+                        related: f.related,
                     });
                 }
                 for r in &mut results {
@@ -2140,6 +2160,7 @@ mod tests {
                     severity: severity.into(),
                     message: "Add *entity* keyword".into(),
                     fixable: false,
+                    related: Vec::new(),
                 })
                 .collect(),
             error: None,

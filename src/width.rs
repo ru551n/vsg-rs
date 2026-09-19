@@ -152,6 +152,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
                         "'{source}' is {right} bits wide and is assigned to '{target}', \
                          which is {left}"
                     ),
+                    related: Vec::new(),
                 });
             }
         }

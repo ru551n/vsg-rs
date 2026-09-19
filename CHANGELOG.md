@@ -15,6 +15,12 @@
 * More layout violations report the VSG rule id instead of `format`: the learned table covers
   410 kinds of token-pair change, up from 301. The same lines are reported, attributed more
   precisely (on 150 VUnit files, `format` findings fall from 15118 to 11851).
+* `compact_alignment` is implemented. With it (VSG's default) an aligned column is the narrowest
+  that fits; without it a group that already agrees on a wider column keeps it.
+* The `:=` of generic and port clauses is aligned after the type, as VSG does (`entity_018`); it
+  was previously collapsed to one space.
+* `scripts/migrate_vsg_config.py` rewrites a VSG 3.2x configuration to the rule names 3.35 uses,
+  and the weekly compatibility job adds open-logic (825 configured rules) as a second corpus.
 * A weekly job measures agreement with VSG 3.35 over VUnit's VHDL and writes the per-rule table
   to the job summary (`scripts/compare_vsg.py --markdown`).
 * `vsg_rs: reflow_comments` re-wraps comment paragraphs to the line width (off by default; VSG

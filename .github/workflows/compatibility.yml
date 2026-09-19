@@ -56,3 +56,48 @@ jobs:
         with:
           name: compatibility
           path: .compare
+
+  # open-logic configures 825 rules, far more of VSG's option surface than VUnit does, so it
+  # measures how well the configuration is honoured rather than how well the rules are written.
+  configured:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: open-logic/open-logic
+          ref: ecca8af95295e798b8a3bc6610cb52be9688ae01
+          path: configured
+          persist-credentials: false
+
+      - run: pip install --retries 10 --timeout 60 vsg==3.35.0
+      - run: cargo build --locked --release
+
+      - name: Compare
+        env:
+          HOW_MANY: ${{ inputs.files || '200' }}
+        run: |
+          # Their configuration names rules that VSG 3.35 has renamed, and refuses to load
+          # without this; see scripts/migrate_vsg_config.py.
+          python3 scripts/migrate_vsg_config.py \
+            configured/lint/config/vsg_config.yml > configured_config.yml
+          # Their own exclusions: third-party sources and one incomplete documentation example.
+          find configured/src configured/test -name '*.vhd' \
+            | grep -v RbExample | sort | head -n "$HOW_MANY" > configured_files.txt
+          python3 scripts/compare_vsg.py --vsg vsg --vsg-rs target/release/vsg-rs \
+            -c configured_config.yml --out .compare-configured \
+            --markdown "$GITHUB_STEP_SUMMARY" $(cat configured_files.txt)
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: compatibility-configured
+          path: .compare-configured

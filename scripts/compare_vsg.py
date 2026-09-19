@@ -56,6 +56,22 @@ def layout_rules(vsg_rs: str) -> set[str]:
     return {line.split()[0] for line in listing.splitlines() if "formatter" in line.split()[1:2]}
 
 
+def vsg_version(command: str) -> str:
+    """What `vsg --version` says, so a report names the version it was measured against."""
+    try:
+        out = subprocess.run(
+            shlex.split(command) + ["--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+        text = (out.stdout + out.stderr).strip().splitlines()
+        return text[0].strip() if text else "VSG (version unknown)"
+    except (OSError, subprocess.SubprocessError):
+        return "VSG (version unknown)"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -125,7 +141,7 @@ def main() -> int:
         agreement[kind] = 100.0 * both / seen if seen else 100.0
     if args.markdown:
         lines = [
-            "## Compatibility with VSG 3.35",
+            f"## Compatibility with {vsg_version(args.vsg)}",
             "",
             f"{len(files)} files.",
             "",

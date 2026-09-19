@@ -38,6 +38,20 @@ licenses), and a `SHA256SUMS` file:
 | `vsg-rs-vX.Y.Z-aarch64-apple-darwin.tar.gz` | macOS arm64 |
 | `vsg-rs-vX.Y.Z-x86_64-apple-darwin.tar.gz` | macOS x86_64 |
 
+## The VSG version a release targets
+
+Every release states it, because the rule set, the configuration keys and the report formats are
+one VSG version's. Before tagging:
+
+1. The top of `CHANGELOG.md` says **Targets VSG X.Y.Z** for the release being cut.
+2. `vsg-rs --version` prints the same version (`src/vsg_cli.rs`).
+3. The pinned jobs in `.github/workflows/compatibility.yml` install that version.
+
+The `latest` job in that workflow installs whatever VSG released most recently and prints both
+versions in its summary, so a new VSG release shows up here rather than in someone's pipeline.
+Moving to a new VSG version is a deliberate change: the rule set differs, and a configuration
+written for the older one may not load (see `scripts/migrate_vsg_config.py`).
+
 ## Workflow
 
 `.github/workflows/release.yml`:

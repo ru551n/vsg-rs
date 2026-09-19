@@ -1,0 +1,62 @@
+# The published documentation (Read the Docs). It covers what vsg-rs adds on top of VSG; the
+# VSG interface itself is documented by VSG and linked to from the home page, so that the two
+# cannot drift apart.
+site_name: vsg-rs
+site_description: A VHDL formatter and linter in Rust, compatible with VSG.
+site_url: https://vsg-rs.readthedocs.io/
+repo_url: https://github.com/ru551n/vsg-rs
+repo_name: ru551n/vsg-rs
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/weather-night, name: Dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/weather-sunny, name: Light mode}
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+# Working notes that restate VSG's own reference. They stay in the repository for development
+# but are not published: VSG documents its rules and its configuration.
+exclude_docs: |
+  vsg-rules.md
+  vsg-config.md
+  upstream-bugs.md
+  upstream-limitations.md
+
+nav:
+  - Home: index.md
+  - Coming from VSG: migrating-from-vsg.md
+  - What vsg-rs adds:
+      - The lint layer: lint.md
+      - Waivers: waivers.md
+      - Formatting: formatting.md
+      - Line folding: line-folding.md
+      - Folding coverage: line-folding-coverage.md
+      - Editors: editors.md
+  - Continuous integration:
+      - GitHub Action: github-action.md
+      - GitLab CI: gitlab-ci.md
+  - Compatibility with VSG:
+      - Measured compatibility: compatibility.md
+      - Rule status: rule-status.md
+  - Background:
+      - Next to Linty and Sigasi: comparison.md
+      - Roadmap to a full linter: roadmap-linter.md
+      - Architecture: architecture.md
+      - VHDL frontend: vhdl-frontend.md
+      - Performance: performance.md
+  - Releasing: releasing.md

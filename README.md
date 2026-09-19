@@ -211,6 +211,10 @@ The wheels install the `vsg-rs` executable. `python -m vsg_rs ...` runs it too, 
 
 ## Documentation
 
+Published at **[vsg-rs.readthedocs.io](https://vsg-rs.readthedocs.io/)**. It documents what
+vsg-rs adds on top of VSG; the rules, their options and the configuration file are VSG's own and
+are linked to rather than repeated.
+
 * [Compatibility with VSG](docs/compatibility.md) and [rule status](docs/rule-status.md)
 * [Formatting](docs/formatting.md) (layout, alignment, blank lines, keyword case, indentation),
   [line folding](docs/line-folding.md) and its [coverage matrix](docs/line-folding-coverage.md)

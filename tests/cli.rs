@@ -249,6 +249,50 @@ fn extensions_diff_range_sarif_and_rule_list() {
 }
 
 #[test]
+fn stdin_analyses_the_buffer_not_the_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let two_drivers = "entity dut is\n  port (\n    a : in  bit;\n    b : in  bit;\n    \
+                       q : out bit\n  );\nend entity dut;\n\narchitecture rtl of dut is\n\n\
+                       begin\n\n  q <= a;\n  q <= b;\n\nend architecture rtl;\n";
+    let file = write(dir.path(), "dut.vhd", two_drivers);
+    let path = file.to_str().unwrap();
+
+    // The same bytes, from disk and from a buffer, say the same thing.
+    let disk = vsg(&[path, "--check", "lint"], "");
+    let buffer = vsg(
+        &["--stdin", "--stdin_filename", path, "--check", "lint"],
+        two_drivers,
+    );
+    let lines = |out: &std::process::Output| {
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter(|l| l.contains("lint_601") || l.contains("driven here"))
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    assert!(!lines(&disk).is_empty(), "the file itself reports");
+    assert_eq!(lines(&disk), lines(&buffer));
+
+    // An edit that exists only in the buffer decides the answer: the file on disk still has two
+    // drivers, the buffer does not.
+    let fixed = two_drivers.replace("  q <= b;\n", "");
+    let edited = vsg(
+        &["--stdin", "--stdin_filename", path, "--check", "lint"],
+        &fixed,
+    );
+    assert!(
+        lines(&edited).is_empty(),
+        "the buffer is what was analysed: {:?}",
+        lines(&edited)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        two_drivers,
+        "the file was not touched"
+    );
+}
+
+#[test]
 fn sarif_carries_related_locations_and_safe_fixes() {
     let dir = tempfile::tempdir().expect("tempdir");
     // Two drivers of one signal: a finding about more than one place.

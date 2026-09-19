@@ -118,6 +118,12 @@ vsg-rs --recursive src --check style,lint --fail_on lint   # lint gates CI, styl
 `--fix` belongs to the style layer and is refused without it: a lint finding never carries a fix,
 because applying one would change what the design does.
 
+## Unsaved buffers
+
+The layer analyses source, not files. `--stdin` with `--stdin_filename` analyses a buffer in the
+context of the project its path belongs to — see
+[unsaved files](project-setup.md#unsaved-files).
+
 ## Configuration
 
 `-c` takes several files and merges them in order. `--lint_configuration` (`-lc`) adds files that

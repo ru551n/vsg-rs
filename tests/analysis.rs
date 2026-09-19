@@ -7,7 +7,7 @@
 use std::path::Path;
 
 use vsg_rs::Parsed;
-use vsg_rs::analysis::{combinational, design, width};
+use vsg_rs::analysis::{combinational, design, lint, width};
 
 fn parse(source: &str) -> Parsed {
     let parsed = Parsed::new(source.as_bytes().to_vec());
@@ -55,4 +55,16 @@ fn each_rule_module_is_reachable() {
     let found = combinational::check(&parse(source), Path::new("dut.vhd"));
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].rule, "lint_720");
+}
+
+#[test]
+fn a_source_is_a_path_or_a_buffer_standing_in_for_one() {
+    // What an editor holds, for a file that may never have been saved.
+    let buffer = lint::Source::buffer("unsaved.vhd", b"entity e is\nend entity e;\n".to_vec());
+    assert_eq!(buffer.path, Path::new("unsaved.vhd"));
+    assert!(buffer.text.is_some());
+
+    // What the command line names.
+    let file = lint::Source::file("on-disk.vhd");
+    assert!(file.text.is_none(), "a file is read when it is analysed");
 }

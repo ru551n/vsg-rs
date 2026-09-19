@@ -91,6 +91,18 @@ vsg_rs:
     `--debug` prints every file classified this way and why. Set `testbench_files` or
     `testbench_libraries` to decide it yourself rather than relying on the guess.
 
+## Unsaved files
+
+`--stdin` analyses the bytes it is given, not whatever is on disk under that name:
+
+```sh
+vsg-rs --stdin --stdin_filename src/top.vhd --check lint < buffer.vhd
+```
+
+`--stdin_filename` is what decides the file's library and what findings are labelled with, so an
+editor buffer is analysed in its project even before it is saved. An edit that exists only in the
+buffer changes the findings; the file itself is never read or written.
+
 ## Checking what ran
 
 ```sh

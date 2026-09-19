@@ -1501,7 +1501,7 @@ struct PerFile {
 /// The per-file half of the lint layer: everything that needs only this file plus the design-wide
 /// port table. Runs in a worker process, so the parser's global token interner is not shared.
 fn lint_files(
-    files: &[PathBuf],
+    sources: &[vsg_rs::analysis::lint::Source],
     indices: &[usize],
     entities: &vsg_rs::analysis::elaborate::Entities,
     lint_cfg: &Config,
@@ -1519,13 +1519,20 @@ fn lint_files(
     Ok(indices
         .iter()
         .map(|&i| {
-            let file = &files[i];
-            // What is on disk now, so positions match the file after `--fix` wrote it.
-            let Ok(source) = std::fs::read(file) else {
-                return PerFile {
-                    kind: None,
-                    found: Vec::new(),
-                };
+            let file = &sources[i].path;
+            // The buffer if there is one, otherwise what is on disk now, so positions match the
+            // file after `--fix` wrote it.
+            let source = match &sources[i].text {
+                Some(text) => text.clone(),
+                None => match std::fs::read(file) {
+                    Ok(source) => source,
+                    Err(_) => {
+                        return PerFile {
+                            kind: None,
+                            found: Vec::new(),
+                        };
+                    }
+                },
             };
             let parsed = vsg_rs::Parsed::new(source);
             if !parsed.syntax_errors().is_empty() {
@@ -1624,8 +1631,12 @@ fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOpti
             libraries: &cfg.testbench_libraries,
             of_file: &lint.libraries,
         };
+        let sources: Vec<vsg_rs::analysis::lint::Source> = files
+            .iter()
+            .map(vsg_rs::analysis::lint::Source::file)
+            .collect();
         match lint_files(
-            files,
+            &sources,
             &lint.indices,
             &lint.entities,
             &lint_cfg,
@@ -1981,11 +1992,29 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             }
         }
     };
-    if lint && !args.stdin {
+    if lint {
+        // What the lint layer is about: the files named on the command line, or the one buffer
+        // `--stdin` supplied. A buffer is analysed as itself, not as whatever is on disk under
+        // its name, which is what an editor needs and what `--stdin` always implied.
+        let sources: Vec<vsg_rs::analysis::lint::Source> = if args.stdin {
+            let path = args
+                .stdin_filename
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("stdin.vhd"));
+            vec![vsg_rs::analysis::lint::Source::buffer(
+                path,
+                stdin_source.clone(),
+            )]
+        } else {
+            files
+                .iter()
+                .map(vsg_rs::analysis::lint::Source::file)
+                .collect()
+        };
         // Design checks on our own tree: they need no resolution, so they run per file and
         // survive a file the analyser cannot parse. The port table comes from the index round
         // above; a single input never has one, so it is built here.
-        if entities.is_empty() {
+        if entities.is_empty() && !args.stdin {
             entities = vsg_rs::analysis::elaborate::entities(&files);
         }
         // Why each file counts as a testbench, for `--debug`. Owned, because a worker sends it.
@@ -2038,8 +2067,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             }
         } else {
             // One process is enough, or a worker could not be started: do it here.
-            let indices: Vec<usize> = (0..files.len()).collect();
-            match lint_files(&files, &indices, &entities, &lint_cfg, &kind_sources) {
+            let indices: Vec<usize> = (0..sources.len()).collect();
+            match lint_files(&sources, &indices, &entities, &lint_cfg, &kind_sources) {
                 Ok(per_file) => per_file,
                 Err(e) => {
                     eprintln!("ERROR: {e}");
@@ -2063,7 +2092,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 eprintln!("DEBUG:   {} ({reason})", file.display());
             }
         }
-        match vsg_rs::analysis::lint::analyse(&files) {
+        match vsg_rs::analysis::lint::analyse(&sources) {
             Ok(analysis) => {
                 let mapped = analysis.mapped;
                 let mut held_back = 0usize;

@@ -482,10 +482,53 @@ pub fn libraries_of_files() -> BTreeMap<PathBuf, Vec<String>> {
     out
 }
 
-pub fn analyse(files: &[PathBuf]) -> Result<Analysis, String> {
-    let config = configuration(files, project_config().as_deref())?;
+/// A file to analyse: what is on disk, or the buffer an editor currently holds for it.
+///
+/// The path is always meaningful even when the text is not on disk: it decides which library the
+/// file belongs to and what a finding is labelled with.
+#[derive(Debug, Clone)]
+pub struct Source {
+    pub path: PathBuf,
+    /// The contents to analyse. `None` reads the file.
+    pub text: Option<Vec<u8>>,
+}
+
+impl Source {
+    /// A file, read from disk.
+    #[must_use]
+    pub fn file(path: impl Into<PathBuf>) -> Source {
+        Source {
+            path: path.into(),
+            text: None,
+        }
+    }
+
+    /// A buffer standing in for a file that may never have been saved.
+    #[must_use]
+    pub fn buffer(path: impl Into<PathBuf>, text: Vec<u8>) -> Source {
+        Source {
+            path: path.into(),
+            text: Some(text),
+        }
+    }
+}
+
+pub fn analyse(sources: &[Source]) -> Result<Analysis, String> {
+    let files: Vec<PathBuf> = sources.iter().map(|s| s.path.clone()).collect();
+    let config = configuration(&files, project_config().as_deref())?;
     let mut project = Project::from_config(config, &mut Quiet);
     project.enable_all_linters();
+    // An editor's buffer replaces the file it stands for. `update_source` re-parses in place and
+    // registers a path the project has not seen, which is how an unsaved file is analysed at all.
+    for source in sources.iter().filter(|s| s.text.is_some()) {
+        let Some(text) = source.text.as_deref() else {
+            continue;
+        };
+        // VHDL may be Latin-1; anything that is not valid UTF-8 is replaced rather than refused,
+        // so a buffer is always analysable even while it is being typed.
+        let text = String::from_utf8_lossy(text);
+        project.update_source(&vhdl_lang::Source::inline(&source.path, &text));
+    }
 
     let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     // The inputs, by canonical path, so findings can be mapped back to the name the run was
@@ -533,11 +576,33 @@ pub fn analyse(files: &[PathBuf]) -> Result<Analysis, String> {
 mod tests {
     use super::*;
 
+    /// The same source, analysed as a buffer for a path whose file says something else.
+    fn analyse_buffer(text: &str) -> Vec<(&'static str, usize)> {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("dut.vhd");
+        std::fs::write(&path, "entity other is\nend entity other;\n").expect("write");
+        let out =
+            analyse(&[Source::buffer(&path, text.as_bytes().to_vec())]).expect("analysis runs");
+        out.findings.iter().map(|f| (f.rule, f.line)).collect()
+    }
+
+    #[test]
+    fn a_buffer_is_analysed_instead_of_the_file_it_stands_for() {
+        let text = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n\n  \
+                    signal spare : bit;\n\nbegin\n\nend architecture rtl;\n";
+        // The file on disk is a different entity entirely; the buffer is what gets analysed.
+        assert_eq!(analyse_buffer(text), analyse_source(text));
+        assert!(
+            !analyse_buffer(text).is_empty(),
+            "the spare signal is unused"
+        );
+    }
+
     fn analyse_source(text: &str) -> Vec<(&'static str, usize)> {
         let dir = tempfile::tempdir().expect("temporary directory");
         let path = dir.path().join("dut.vhd");
         std::fs::write(&path, text).expect("write");
-        let out = analyse(std::slice::from_ref(&path)).expect("analysis runs");
+        let out = analyse(&[Source::file(&path)]).expect("analysis runs");
         assert!(out.unanalysed.is_empty(), "{:?}", out.unanalysed);
         out.findings.iter().map(|f| (f.rule, f.line)).collect()
     }

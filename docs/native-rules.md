@@ -136,6 +136,16 @@ and reads. **Heuristic**: the analyser infers which signal is a clock from `risi
 `falling_edge` and `'event`, and recognises a synchroniser by its shape.
 
 **Context** one architecture with at least two clocks. **Severity** error. **Fix** none.
+**Off by default** — enable it deliberately:
+
+```yaml
+rule:
+  lint_700:
+    disable: false
+```
+
+It is experimental: clock inference is the one place vsg-rs guesses at design intent rather than
+deriving it, so it is not part of a default run.
 
 ```vhdl
   p_b : process (clk_b) is

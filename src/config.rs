@@ -953,9 +953,10 @@ impl Config {
         // The lint layer's rules are not VSG's, so they have no entry in its defaults: they are
         // enabled and error by default, and the configuration layers over that as usual.
         if id.starts_with("lint_") {
-            // Most lint rules are on once the layer runs; the ones about house style are a
-            // project's choice and start off.
-            let on_by_default = !matches!(id, "lint_602" | "lint_603");
+            // Most lint rules are on once the layer runs. Two kinds start off: house style,
+            // which is a project's choice, and the experimental rules, which infer design intent
+            // rather than deriving it and so cannot point at the evidence the others can.
+            let on_by_default = !matches!(id, "lint_602" | "lint_603" | "lint_700");
             return Some(self.layered(
                 id,
                 &["lint"],

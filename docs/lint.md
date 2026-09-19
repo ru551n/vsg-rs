@@ -62,12 +62,13 @@ by it:
 |---|---|---|
 | Resolved semantics | a resolved symbol table: a name, its declaration, its type | a fact about the code |
 | Dataflow and structure | the syntax tree plus port connections | proven from structure |
-| Heuristic | inferred design intent | weaker; written to under-report |
+| Experimental | inferred design intent | weaker; `lint_700` is off by default |
 | Style policy | a naming convention you configured | not analysis at all |
 
-Only two rules are heuristic — `lint_600` (latch inference) and `lint_700` (clock-domain
-crossings) — because both must decide what a process *is* before they can say anything. They are
-labelled as such rather than mixed in with the rest.
+Two rules infer rather than derive, because both must decide what a process *is* before they can
+say anything: `lint_600` (latch inference) and `lint_700` (clock-domain crossings). `lint_700`
+goes further and infers which signal is a clock, so it is **off unless you enable it**. A default
+run reports only what it can point at.
 
 ## What it does not try to infer
 

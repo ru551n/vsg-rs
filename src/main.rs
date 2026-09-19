@@ -3,6 +3,7 @@
 use std::process::ExitCode;
 
 mod local_rules;
+mod lsp;
 mod vsg_cli;
 mod waivers;
 

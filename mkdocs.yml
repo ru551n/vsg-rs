@@ -41,6 +41,7 @@ nav:
       - Line folding: line-folding.md
       - Folding coverage: line-folding-coverage.md
       - Format on save: editors.md
+      - Language server: lsp.md
   - Static analysis:
       - Overview: lint.md
       - Project setup: project-setup.md

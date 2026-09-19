@@ -155,7 +155,8 @@ VUnit measures how the rules are written; a heavily configured project measures 
 configuration is honoured, which is a different thing. [open-logic](https://github.com/open-logic/open-logic)
 configures **825 rules** across 4,500 lines, and the weekly job now compares against it too.
 
-Two findings from the first run are worth recording:
+Measured September 2026 against open-logic at the revision the weekly job pinned, with their
+configuration migrated to 3.35. Two findings are worth recording:
 
 * **A configuration written for VSG 3.2x does not load in 3.35 at all.** open-logic pins
   `vsg==3.27`; VSG 3.35 rejects their file because it names nine rules that were since renamed or
@@ -163,14 +164,14 @@ Two findings from the first run are worth recording:
   `scripts/migrate_vsg_config.py` rewrites those names, and is useful to any project upgrading.
   Once migrated, **VSG 3.35 itself reports 1,986 violations** on code that VSG 3.27 passes, so
   the version step is a real event independent of vsg-rs.
-* **vsg-rs reported 10,134 against those 1,986**, and the difference was almost entirely
-  configuration that vsg-rs did not honour. Implementing `compact_alignment` and the `:=`
-  alignment of interface lists brought it to 5,824.
+* **vsg-rs reported more than VSG did**, and the difference was almost entirely configuration
+  that vsg-rs did not yet honour rather than disagreement about the code.
 
 What still differs, in order: indentation (`indent.tokens` settings vsg-rs does not implement),
 `port_map_300` and `generic_map_300`, `procedure_509`, `whitespace_008` and `block_comment_003`.
-The gap is a number that should keep falling; it is not a reason to prefer one tool over the
-other on a project whose configuration both tools honour.
+
+The weekly job publishes the current numbers; they are deliberately not repeated here, because a
+figure copied into prose stops being true the week after it is written.
 
 ## Known gaps
 

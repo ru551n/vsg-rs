@@ -1,53 +1,66 @@
 # vsg-rs
 
-A VHDL formatter and linter in Rust. It runs [VSG](https://vhdl-style-guide.readthedocs.io/)'s
-rule set with VSG's command line and VSG's configuration, and adds a formatter that fixes what it
-reports, a lint layer that needs names resolved, and the output formats CI actually wants.
+A VHDL formatter and static-analysis tool written in Rust, with the rule set, command line and
+configuration of the [VHDL Style Guide](https://vhdl-style-guide.readthedocs.io/) (VSG).
+
+Source is parsed once into a lossless syntax tree and printed in one canonical layout, so
+formatting is decided rather than negotiated. On top of that sits a lint layer that resolves names
+across files and reports what a per-file style checker cannot see. VSG compatibility means an
+existing project keeps its configuration and its CI; the formatter and the lint layer are why you
+would choose vsg-rs on a project that has never used VSG.
+
+## What it does
+
+**Formats.** One canonical layout, applied rather than reported. Long lines are folded at
+structural boundaries, output is re-parsed and must contain exactly the same tokens and comments,
+and running `--fix` twice changes nothing. Suitable for format-on-save.
+
+**Analyses.** Sensitivity lists, unused declarations, name resolution, case-choice completeness,
+port and generic association, latch inference, multiple drivers, combinational loops, state
+machines, vector widths and clock-domain crossings. Each rule states the evidence it works from,
+and reports nothing when the evidence is missing.
+
+**Stays compatible with VSG.** The arguments, the configuration file, the reports and the exit
+codes are VSG's, so existing scripts keep working.
+
+## Try it
 
 ```sh
-pip install vsg-rs          # or a standalone binary from the releases
-vsg-rs --recursive src      # exactly as VSG would
-vsg-rs --recursive src --fix
-vsg-rs lint --recursive src # the layer VSG does not have
+pip install vsg-rs
+
+vsg-rs -f src/top.vhd                      # report style violations
+vsg-rs --recursive src --fix               # format in place
+vsg-rs lint --recursive src                # the lint layer
+vsg-rs --recursive src --check style,lint  # both
 ```
 
-## This documentation does not repeat VSG's
+## Where to go next
 
-The rules, their options and the configuration file are VSG's, and VSG documents them well.
-Repeating that here would only let the two drift apart, so **the VSG interface is documented by
-VSG**:
-
-| For | Read |
+| If you want to | Go to |
 |---|---|
-| What a rule checks and its options | [VSG rule documentation](https://vhdl-style-guide.readthedocs.io/en/latest/rule_groups.html) |
-| The configuration file: `rule:`, `indent:`, `file_list` | [Configuring VSG](https://vhdl-style-guide.readthedocs.io/en/latest/configuring.html) |
-| The command line arguments vsg-rs shares | [Using VSG](https://vhdl-style-guide.readthedocs.io/en/latest/usage.html) |
+| install it and run something | [Quick start](quick-start.md) |
+| move an existing VSG project across | [Coming from VSG](migrating-from-vsg.md) |
+| format code, or format on save | [Formatting](formatting.md), [Editors](editors.md) |
+| find real bugs, not layout | [Static analysis](lint.md) |
+| understand why a rule reported nothing | [Project setup](project-setup.md) |
+| look up what `lint_600` means | [Rule reference](rule-reference.md) |
+| run it in CI | [GitHub](github-action.md), [GitLab](gitlab-ci.md), [Report formats](reports.md) |
+| accept violations in existing code | [Waivers](waivers.md) |
+| know how it works inside | [Architecture](architecture.md) |
 
-What follows is only what vsg-rs adds on top, and where it deliberately differs.
+## What it is not
 
-## What vsg-rs adds
+vsg-rs is not a compiler, simulator, synthesis tool, timing analyser or formal verification tool,
+and it does not elaborate a design. The lint layer reasons about source: names, types, control
+flow, dataflow and the connections between design units. Where the source does not say something
+outright, it generally prefers to report nothing over guessing — see
+[what it does not try to infer](lint.md#what-it-does-not-try-to-infer).
 
-* **[The lint layer](lint.md)** — `vsg-rs lint`: sensitivity lists, unused declarations, latch
-  inference, multiple drivers, register naming, and the type and name diagnostics of a real
-  front end. None of this exists in VSG.
-* **[Waivers](waivers.md)** — accept the violations a project has decided to live with, so a
-  rule set can be adopted on code that does not follow it yet.
-* **[Formatting](formatting.md)** — nearly every layout rule is fixed rather than reported, with
-  [line folding](line-folding.md) for long lines and formatter-off regions.
-* **CI** — a [GitHub Action](github-action.md) with annotations and suggested changes,
-  [GitLab CI](gitlab-ci.md) with the code-quality report, plus SARIF, JUnit and `--statistics`.
-* **[Editor integration](editors.md)**, and a [migration guide](migrating-from-vsg.md) for
-  projects coming from VSG.
+## Status
 
-## How close it is to VSG
+Beta. The style layer implements VSG 3.35's rule set and is tested against more than 11,000
+real-world files; layout may still change before 1.0. The lint layer is newer and its rule set is
+growing. Each release states the VSG version it targets, and `vsg-rs --version` prints it.
 
-Measured, not asserted: [compatibility](compatibility.md) has the weekly comparison against VSG
-over two corpora, and [rule status](rule-status.md) lists what is implemented.
-
-Every release states the VSG version it targets, and `vsg-rs --version` prints it.
-
-## Background
-
-* [Roadmap to a full linter](roadmap-linter.md)
-* [Architecture](architecture.md) and the [VHDL frontend](vhdl-frontend.md)
-* [Performance](performance.md)
+vsg-rs is an independent implementation. It contains no VSG code, and is not affiliated with or
+endorsed by the VHDL Style Guide project.

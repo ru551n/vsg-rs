@@ -72,7 +72,8 @@ a width-aware formatter later, that engine is a candidate to contribute.
 * Pin a git revision until a crates.io release contains the needed fixes, then switch back to a
   version requirement.
 * Parse each source snapshot exactly once, with `parse_with_standard(VHDL2008, …)`.
-* Add `vhdl_lang` only if and when semantic rules need name resolution.
+* Add `vhdl_lang` when semantic rules need name resolution. This has happened: the lint layer
+  uses it for name resolution and type checking, and it is a dependency today.
 
 ## Fallback strategy
 

@@ -78,6 +78,11 @@ jobs:
       # The published documentation, built the way Read the Docs builds it. `--strict` fails on a
       # link to a page that does not exist, which is the way documentation usually rots.
       - run: pip install --retries 10 --timeout 60 -r docs/requirements.txt
+      # Rule tables and counts are generated from the binary, because hand-written ones drifted:
+      # the site once said 58 lint rules while the binary had 66. Committed, because Read the
+      # Docs builds with mkdocs alone and cannot run cargo.
+      - run: cargo build --release
+      - run: python scripts/gen_rule_docs.py --check
       - run: mkdocs build --strict --site-dir /tmp/site
 
   # How much of the code the tests reach; a number per pull request, not a gate.

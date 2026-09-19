@@ -31,32 +31,35 @@ markdown_extensions:
 
 # Working notes that restate VSG's own reference. They stay in the repository for development
 # but are not published: VSG documents its rules and its configuration.
-exclude_docs: |
-  vsg-rules.md
-  vsg-config.md
-  upstream-bugs.md
-  upstream-limitations.md
-
 nav:
   - Home: index.md
-  - Coming from VSG: migrating-from-vsg.md
-  - What vsg-rs adds:
-      - The lint layer: lint.md
-      - Waivers: waivers.md
+  - Getting started:
+      - Quick start: quick-start.md
+      - Coming from VSG: migrating-from-vsg.md
+  - Formatter:
       - Formatting: formatting.md
       - Line folding: line-folding.md
       - Folding coverage: line-folding-coverage.md
-      - Editors: editors.md
-  - Continuous integration:
+      - Format on save: editors.md
+  - Static analysis:
+      - Overview: lint.md
+      - Project setup: project-setup.md
+      - Rule reference: rule-reference.md
+      - Waivers: waivers.md
+  - CI and automation:
       - GitHub Action: github-action.md
       - GitLab CI: gitlab-ci.md
       - Report formats: reports.md
-  - Compatibility with VSG:
+  - VSG compatibility:
       - Measured compatibility: compatibility.md
       - Rule status: rule-status.md
-  - Background:
-      - Roadmap to a full linter: roadmap-linter.md
+      - VSG configuration model: vsg-config.md
+  - Reference:
+      - Rule counts: rule-counts.md
+  - Developer documentation:
       - Architecture: architecture.md
       - VHDL frontend: vhdl-frontend.md
       - Performance: performance.md
-  - Releasing: releasing.md
+      - Releasing: releasing.md
+      - Upstream notes: upstream-notes.md
+  - Roadmap: roadmap.md

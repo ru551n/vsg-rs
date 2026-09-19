@@ -1,6 +1,11 @@
 # Performance
 
-Measured on a 24-core Linux machine with a release build (`lto = "thin"`), September 2026.
+Measured September 2026 on a 24-core x86-64 Linux machine, release build (`lto = "thin"`),
+one binary, warm page cache. Each figure is the best of the stated number of runs, measured
+process start to exit.
+
+These numbers describe one machine on one day. Re-measure before quoting them: `examples/bench`
+and `examples/corpus.rs` produce them, and `scripts/compare_bench.py` compares two runs.
 
 ## Editor path (`--stdin`)
 
@@ -17,8 +22,8 @@ Best of 30 runs, process start to exit, including parsing, layout, output verifi
 ## Library (`cargo run --release --example bench`)
 
 Best of 3–10 runs, single thread. `format` includes output verification and alignment. `fix`
-includes rule checks before and after, one parse of the fixed source, and formatting. Lint runs
-all 192 rules.
+includes rule checks before and after, one parse of the fixed source, and formatting. The
+`Lint` column is the style layer's rule checks over a parsed file, not the `--check lint` layer.
 
 | Input | Bytes | Parse | Format | Lint | Fix |
 |---|---|---|---|---|---|

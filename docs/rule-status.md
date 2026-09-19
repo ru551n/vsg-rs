@@ -9,7 +9,7 @@ VSG 3.35.0 has 972 rules:
 |---|---|---|
 | implemented | 192 | reported by `vsg-rs`, with the fix class listed below |
 | formatter | 779 | layout policy applied by `vsg-rs --fix` (whitespace, indentation, blank lines, alignment, keyword case, line structure); configured through the VSG rule options described in `formatting.md` |
-| command line | 1 | `source_file_001`: a missing input file is an error (exit code 2) |
+| command line | 1 | `source_file_001`: a missing input file is an error (exit code 1) |
 
 Formatter-owned rules are not reported one by one: unformatted lines are reported as `format`
 violations, and `vsg-rs --fix --diff` shows the change.
@@ -233,7 +233,9 @@ Defaults and severities follow VSG's defaults (all errors except `length_001` an
 
 ## Not supported
 
-* VSG's `indent.tokens` per-token indentation (see `formatting.md`).
+* The settings in VSG's `indent.tokens` block that do not change a construct's indentation —
+  continuation-line offsets, for example. The rest of the block is replayed; see
+  [formatting](formatting.md#indentation-indenttokens).
 * VSG's `local_rules` (Python rule plugins) are not run by vsg-rs itself but by an installed VSG
   (see `compatibility.md`).
 * Several `case::keyword` rules name the same keyword in different constructs (for example

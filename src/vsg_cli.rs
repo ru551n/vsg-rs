@@ -1909,7 +1909,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                     eprintln!(
                         "WARNING: no vhdl_ls.toml found, so {inactive} of {all} lint rules did \
                          not run{findings}. They need to know which library each file is in; \
-                         see docs/lint.md"
+                         see https://vsg-rs.readthedocs.io/en/latest/project-setup/"
                     );
                 }
                 if !analysis.unanalysed.is_empty() {

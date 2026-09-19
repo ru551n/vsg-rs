@@ -168,7 +168,7 @@ constant table : lut_t := (x"00", x"01",
   Rule fixes still apply inside `fmt off` regions (not inside `vsg_off` regions, where rules are
   suppressed).
 
-## Not supported
+## Partly supported
 
 * Settings in VSG's `indent.tokens` block that do not change the indentation of a construct's
   body, `begin`, branches, `end` or closing parenthesis (for example continuation-line

@@ -1,6 +1,9 @@
-# VSG Configuration Model (v3.35.0)
+# VSG configuration model (3.35.0)
 
-Own-words summary of how VSG is configured and invoked, compiled from
+How VSG itself is configured and invoked, written in our own words. vsg-rs reads the same
+configuration, so this is the model behind
+[VSG's configuration documentation](https://vhdl-style-guide.readthedocs.io/en/latest/configuring.html)
+as vsg-rs implements it. Compiled from
 `configuring_overview.rst`, `configuring_length_rules.rst`, a JSON dump of
 every rule's live configuration (`all_rules_config.yaml`, produced by
 `vsg -oc`), and black-box verification against the real `vsg==3.35.0`
@@ -60,10 +63,10 @@ rule:
 ```
 
 Every rule is addressed by its `<ruleId>_<ruleNumber>` name exactly as
-listed in `vsg-rules.md` (e.g. `whitespace_006`, `port_010`, `length_001`).
+(for example `whitespace_006`, `port_010`, `length_001`).
 `group` targets one of VSG's named rule groups (`indent`, `case`,
 `alignment`, `blank_line`, `naming`, `structure`, ... — the same groupings
-used as the "owner" hint in `vsg-rules.md`), letting you flip a whole
+), letting you flip a whole
 category (e.g. "disable every alignment rule") in one line instead of
 listing every member rule. If `global` and a specific rule/group both set
 the same attribute, the more specific one wins (see priority order above).
@@ -77,7 +80,7 @@ Confirmed directly from `vsg -rc <any rule>` and from `all_rules_config.yaml`
 |---|---|---|
 | `disable` | bool | Turns the rule off entirely (no report, no fix). |
 | `fixable` | bool | Whether `--fix` is allowed to auto-correct this rule's violations (independent of whether the rule *can* fix itself — see `length_001` below, which is permanently `fixable: false`). |
-| `phase` | int (1-7) | Which of VSG's seven fix/report phases the rule runs in (see `vsg-rules.md` for the phase table). Rules stop being *reported* once an earlier phase has violations, unless `-ap`/`--all_phases` is passed. |
+| `phase` | int (1-7) | Which of VSG's seven fix/report phases the rule runs in . Rules stop being *reported* once an earlier phase has violations, unless `-ap`/`--all_phases` is passed. |
 | `severity` | `"Error"` \| `"Warning"` | Report severity; does not by itself affect the process exit code (both still count as violations) but affects the printed summary counts and JUnit/JSON export. |
 | `indent_size` | int | Spaces per indent level for that rule's own indentation math (defaults to 2 almost everywhere in the dump). |
 | `indent_style` | `"spaces"` (only value seen) | Present on every rule but effectively fixed. |
@@ -94,7 +97,7 @@ check needs. Surveying `all_rules_config.yaml` by category:
   rules specifically, `case_exceptions`, `prefix_exceptions`, and
   `suffix_exceptions` (lists of literal strings/identifiers to skip when
   checking case — this is the "exception list" mechanism that VSG-BUG-018
-  in `upstream-bugs.md` found to be inconsistently honored).
+  found to be inconsistently honored).
 - **Naming/prefix/suffix rules** (e.g. `signal_008`, `variable_012`,
   `type_600`): add `prefixes`/`suffixes` (lists, e.g. `signal_008` defaults
   to `["s_"]`) and `exceptions`; these rules default to `disable: true`
@@ -114,7 +117,7 @@ check needs. Surveying `all_rules_config.yaml` by category:
   integer attribute. Defaults: `length_001` (max line length) = **120**,
   `length_002` (max file length) = **2000**, `length_003` (max process
   length) = **500**. All three are permanently `"fixable": false` — VSG
-  never rewraps lines automatically (see `upstream-limitations.md` L3/L
+  never rewraps lines automatically (L3/L
   VSG-BUG-026); a project can only move the threshold, never make the
   violation self-heal.
 
@@ -205,19 +208,10 @@ note below):
 | `-ap` | `--all_phases` | Don't stop reporting at the first phase with violations; report all 7. Mutually exclusive with `--fix` (verified: combining them is a CLI usage error, exit 1, `"-ap argument is invalid with the --fix argument"`). |
 | — | `--fix_only FILE` | Restrict which rules `--fix` is allowed to touch, via a JSON allow-list file. |
 | — | `--stdin` | Read one file's VHDL from stdin; disables file selection and multiprocessing. |
-| — | `--force_fix` | Alpha: apply fixes even if syntax errors are present (see `upstream-limitations.md` L7 — this doesn't guarantee the *output* stays valid). |
+| — | `--force_fix` | Alpha: apply fixes even if syntax errors are present; this does not guarantee the *output* stays valid. |
 | — | `--quality_report FILE` | GitLab code-quality JSON report. |
-| — | `--sonarqube FILE` | SonarQube generic issue JSON (`sonar.externalIssuesReportPaths`); see [reports](reports.md). |
 | `-p N` | `--jobs` | Parallel worker count (default: CPU core count). |
 | — | `--debug` | Verbose internal debug output. |
-
-**Correction vs. the task's assumed flag set**: there is no `--all-phases`
-(dash form) or `-p`/`--fix-phase` combination in the real CLI — the actual
-pairing is `-fp`/`--fix_phase` for "fix up to phase N" and separately
-`-p`/`--jobs` for parallelism (an unrelated option that happens to share the
-`-p` short flag with what one might guess `--fix_phase` abbreviates to);
-`--all_phases`/`-ap` uses underscores like the rest of VSG's long-option
-naming, not hyphens.
 
 ### Exit codes (black-box verified against a real `vsg==3.35.0`, not assumed)
 

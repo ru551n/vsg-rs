@@ -11,7 +11,7 @@ what it reports, and adds a lint layer that VSG has no equivalent of.
 
 **Status: beta.** The style layer implements VSG 3.35's rule set and is tested against more than
 11,000 real-world files; expect layout changes before 1.0. The lint layer (`vsg-rs lint`) is
-newer: 66 rules today, and the set will grow.
+newer and its rule set is still growing.
 
 ## Install
 
@@ -68,10 +68,15 @@ lint_601 -- Signal 'result' is assigned by 2 concurrent statements (lines 34, 38
 lint_001 -- The signal 'b' is not read in the sensitivity list (first read at line 10)
 ```
 
-Sensitivity lists, unused declarations, latch inference, multiple drivers, register naming, and
-the type and name diagnostics of a real front end. Testbench and RTL code can carry different
-rules, and `ieee`/`std` are built in, so nothing else needs installing. See
-[the lint layer](https://vsg-rs.readthedocs.io/en/latest/lint/).
+Sensitivity lists, unused declarations, latch inference, multiple drivers, combinational loops,
+state machines, vector widths, clock-domain crossings, and the type and name diagnostics of a
+real front end. Every rule states the evidence behind it and reports nothing when that evidence
+is missing.
+
+Most of these resolve names across files, which needs a library map — without one they are
+skipped, and the run says so. See
+[static analysis](https://vsg-rs.readthedocs.io/en/latest/lint/) and
+[project setup](https://vsg-rs.readthedocs.io/en/latest/project-setup/).
 
 ### Adopting a rule set on existing code
 
@@ -123,7 +128,10 @@ anywhere.
 rules, their options and the configuration file are VSG's own and are linked to rather than
 repeated.
 
-* [The lint layer](https://vsg-rs.readthedocs.io/en/latest/lint/)
+* [Quick start](https://vsg-rs.readthedocs.io/en/latest/quick-start/)
+* [Static analysis](https://vsg-rs.readthedocs.io/en/latest/lint/) and
+  [project setup](https://vsg-rs.readthedocs.io/en/latest/project-setup/)
+* [Rule reference](https://vsg-rs.readthedocs.io/en/latest/rule-reference/)
 * [Waivers](https://vsg-rs.readthedocs.io/en/latest/waivers/)
 * [Migrating from VSG](https://vsg-rs.readthedocs.io/en/latest/migrating-from-vsg/)
 * [Compatibility with VSG](https://vsg-rs.readthedocs.io/en/latest/compatibility/), measured

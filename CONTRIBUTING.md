@@ -34,6 +34,7 @@ python scripts/compare_vsg.py FILE...                  # findings per rule, vsg-
 python scripts/migrate_vsg_config.py old.yml > new.yml # a VSG 3.2x configuration, in 3.35's rule names
 python scripts/learn_layout_rules.py FILE...           # relearn src/layout_rules.json
 python scripts/gen_spacing_rules.py VSG_CHECKOUT/docs  # regenerate src/spacing_rules.json
+python scripts/gen_rule_docs.py                        # regenerate the docs' rule tables
 ```
 
 `.github/workflows/compatibility.yml` runs the comparison weekly over two corpora — VUnit, and
@@ -45,8 +46,9 @@ Beyond format, clippy and tests: `cargo deny check` (licences, duplicate crates,
 `deny.toml`), `cargo machete` (unused dependencies), `typos` (`_typos.toml`), `cargo test --doc`,
 `cargo llvm-cov` (coverage in the job summary), `cargo semver-checks` against the base branch
 (reported, not enforced), `examples/bench` against the base branch (`scripts/compare_bench.py`,
-warns when something is more than 25% slower), and `mkdocs build --strict` for the documentation
-site. The formatter is fuzzed nightly (`fuzz/fuzz_targets/`).
+warns when something is more than 25% slower), and, for the documentation site, `mkdocs build --strict`
+plus `scripts/gen_rule_docs.py --check`, which fails when the generated rule tables no longer
+match the binary. The formatter is fuzzed nightly (`fuzz/fuzz_targets/`).
 
 ## Using the library
 

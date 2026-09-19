@@ -78,7 +78,7 @@ repos:
         name: vsg-rs
         entry: vsg-rs --fix -c vsg.yaml
         language: python
-        additional_dependencies: [vsg-rs==0.7.0]
+        additional_dependencies: [vsg-rs==0.11.0]
         files: \.(vhd|vhdl)$
         require_serial: true
 ```
@@ -89,7 +89,7 @@ Or from this repository, which builds vsg-rs from source (hooks `vsg-rs` to chec
 ```yaml
 repos:
   - repo: https://github.com/ru551n/vsg-rs
-    rev: v0.7.0
+    rev: v0.11.0
     hooks:
       - id: vsg-rs-fix
         args: [-c, vsg.yaml]

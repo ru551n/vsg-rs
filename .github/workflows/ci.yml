@@ -10,7 +10,61 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # Which parts of the repository a change touches, so the rest of the workflow can stay out of
+  # the way. A documentation change should not build the compiler on three operating systems.
+  # When the answer cannot be worked out -- a first push, a force push, a shallow history -- every
+  # job runs, because a missed check is worse than a wasted minute.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.what.outputs.rust }}
+      docs: ${{ steps.what.outputs.docs }}
+      vscode: ${{ steps.what.outputs.vscode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - id: what
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          everything() {
+            {
+              echo "rust=true"
+              echo "docs=true"
+              echo "vscode=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          [ -n "$BASE" ] || everything
+          git cat-file -e "$BASE^{commit}" 2>/dev/null || everything
+          files=$(git diff --name-only "$BASE" HEAD)
+          echo "changed:"; echo "$files" | sed 's/^/  /'
+
+          # The workflow itself, or anything that decides how the build behaves: run everything.
+          if echo "$files" | grep -qE '^\.github/workflows/ci\.yml$|^rust-toolchain'; then
+            everything
+          fi
+
+          has() { echo "$files" | grep -qE "$1"; }
+          rust=false
+          docs=false
+          vscode=false
+          # The crate, its inputs, and the things that gate it.
+          has '^(src|tests|examples|fuzz|vendor|scripts)/|^(build\.rs|Cargo\.toml|Cargo\.lock|clippy\.toml|deny\.toml|_typos\.toml)$' && rust=true
+          # The published site. A Rust change can make the generated rule tables stale, so the
+          # documentation job also runs whenever the crate changes.
+          has '^docs/|^mkdocs\.yml$|^[^/]*\.md$' && docs=true
+          has '^editors/vscode/' && vscode=true
+          {
+            echo "rust=$rust"
+            echo "docs=$docs"
+            echo "vscode=$vscode"
+          } >> "$GITHUB_OUTPUT"
   lint:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -23,6 +77,8 @@ jobs:
       - run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
   test:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -36,6 +92,8 @@ jobs:
       - run: cargo test --locked --workspace
 
   msrv:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -47,6 +105,8 @@ jobs:
 
   # Licences, duplicate crates, unknown sources and RUSTSEC advisories (deny.toml).
   deny:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -56,6 +116,8 @@ jobs:
 
   # Documentation examples, spelling of user-visible text, and unused dependencies.
   extras:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -75,19 +137,39 @@ jobs:
       # The fuzz targets are a separate crate on nightly, so nothing else compiles them; without
       # this a broken target is only found by the nightly fuzz run, seven minutes in.
       - run: cargo +nightly check --manifest-path fuzz/Cargo.toml --bins
-      # The published documentation, built the way Read the Docs builds it. `--strict` fails on a
-      # link to a page that does not exist, which is the way documentation usually rots.
+
+  # The published documentation, built the way Read the Docs builds it. `--strict` fails on a link
+  # to a page that does not exist, which is the way documentation usually rots.
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.13"
       - run: pip install --retries 10 --timeout 60 -r docs/requirements.txt
-      # Rule tables and counts are generated from the binary, because hand-written ones drifted:
-      # the site once said 58 lint rules while the binary had 66. Committed, because Read the
-      # Docs builds with mkdocs alone and cannot run cargo.
-      - run: cargo build --release
-      - run: python scripts/gen_rule_docs.py --check
       - run: mkdocs build --strict --site-dir /tmp/site
+      # Rule tables and counts are generated from the binary, because hand-written ones drifted:
+      # the site once said 58 lint rules while the binary had 66. Only a change to the crate can
+      # make them stale, so the build that checks them is skipped for prose.
+      - if: needs.changes.outputs.rust == 'true'
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - if: needs.changes.outputs.rust == 'true'
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - if: needs.changes.outputs.rust == 'true'
+        run: cargo build --release
+      - if: needs.changes.outputs.rust == 'true'
+        run: python scripts/gen_rule_docs.py --check
 
   # The VS Code client is a launcher, not logic, but it still has to compile: a type error here
   # would only be found when someone tried to package a release.
   vscode:
+    needs: changes
+    if: needs.changes.outputs.vscode == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -103,6 +185,8 @@ jobs:
 
   # How much of the code the tests reach; a number per pull request, not a gate.
   coverage:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -132,7 +216,8 @@ jobs:
   # Changes to the public library API against the base branch. Reported, not enforced: vsg-rs
   # is still 0.x, and the API may change with a minor version.
   semver:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -152,7 +237,8 @@ jobs:
 
   # Timings of this pull request against its base (warns, never fails: shared runners).
   bench:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

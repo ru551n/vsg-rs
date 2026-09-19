@@ -53,7 +53,42 @@ fn config_for(path: &Path) -> Config {
 /// The path an editor URI stands for. A document that is not a file still needs a name, because
 /// the name decides the configuration and the library it is analysed in.
 fn path_of(uri: &Uri) -> PathBuf {
-    uri.path().as_str().into()
+    let path = uri.path().as_str();
+    // A Windows file URI is `file:///C:/dir/x.vhd`, whose path component is `/C:/dir/x.vhd`.
+    // Handed to the filesystem unchanged that is not a path at all, so the document would never
+    // be found and no configuration would be discovered for it.
+    let path = path
+        .strip_prefix('/')
+        .filter(|rest| {
+            let mut chars = rest.chars();
+            chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+                && chars.next() == Some(':')
+                && matches!(chars.next(), Some('/') | None)
+        })
+        .unwrap_or(path);
+    // Percent-encoding is how a space or a `#` survives a URI; the filesystem wants it back.
+    percent_decode(path).into()
+}
+
+/// `%20` and friends, decoded. Anything that is not a valid escape is left as it was.
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let decoded = (bytes[at] == b'%')
+            .then(|| text.get(at + 1..at + 3))
+            .flatten()
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        if let Some(byte) = decoded {
+            out.push(byte);
+            at += 3;
+        } else {
+            out.push(bytes[at]);
+            at += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// A byte offset in `text`, as an LSP position. LSP counts UTF-16 code units within a line.
@@ -489,4 +524,38 @@ pub(crate) fn serve() -> std::process::ExitCode {
             .await;
     });
     std::process::ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn uri(text: &str) -> Uri {
+        text.parse().expect("a URI")
+    }
+
+    #[test]
+    fn a_windows_uri_becomes_a_windows_path() {
+        // The path component of `file:///C:/dir/x.vhd` starts with a slash the filesystem has
+        // no use for; leaving it on means no document is ever found on Windows.
+        assert_eq!(
+            path_of(&uri("file:///C:/dir/x.vhd")),
+            PathBuf::from("C:/dir/x.vhd")
+        );
+        // A leading slash that is not a drive letter is part of the path.
+        assert_eq!(
+            path_of(&uri("file:///home/me/x.vhd")),
+            PathBuf::from("/home/me/x.vhd")
+        );
+    }
+
+    #[test]
+    fn an_escaped_path_is_decoded() {
+        assert_eq!(
+            path_of(&uri("file:///home/my%20designs/x.vhd")),
+            PathBuf::from("/home/my designs/x.vhd")
+        );
+        // Something that is not an escape is left alone rather than eaten.
+        assert_eq!(percent_decode("100%"), "100%");
+    }
 }

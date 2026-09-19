@@ -173,6 +173,16 @@ fn parse(mut data: &[u8]) -> Vec<serde_json::Value> {
     out
 }
 
+/// A file URI for a path, on any platform: `file:///home/x.vhd`, `file:///C:/dir/x.vhd`.
+fn file_uri(path: &std::path::Path) -> String {
+    let text = path.display().to_string().replace('\\', "/");
+    if text.starts_with('/') {
+        format!("file://{text}")
+    } else {
+        format!("file:///{text}")
+    }
+}
+
 fn initialize() -> serde_json::Value {
     serde_json::json!({
         "jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -319,7 +329,7 @@ fn the_front_ends_rules_reach_the_editor_too() {
                   signal spare : bit;\n\nbegin\n\nend architecture rtl;\n";
     std::fs::write(&file, source).expect("write source");
 
-    let uri = format!("file://{}", file.display());
+    let uri = file_uri(&file);
     let mut session = Session::start_in(dir.path());
     let got = session.talk_while(&[did_open(&uri, source)], |seen| {
         seen.iter()
@@ -421,10 +431,9 @@ fn fix_all_applies_only_what_the_command_line_would_apply() {
         .as_array()
         .expect("actions")
         .clone();
-    // Only what was asked for.
     assert!(
         actions.iter().all(|a| a["kind"] == "source.fixAll"),
-        "{actions:#?}"
+        "only what was asked for: {actions:#?}"
     );
     for action in &actions {
         let edits = action["edit"]["changes"]["file:///tmp/unsafe.vhd"]
@@ -452,7 +461,7 @@ fn formatting_is_what_the_command_line_would_have_written() {
     assert!(fixed.status.success() || fixed.status.code() == Some(1));
     let expected = std::fs::read_to_string(&file).expect("read back");
 
-    let uri = format!("file://{}", file.display());
+    let uri = file_uri(&file);
     let got = Session::start().talk(
         &[
             did_open(&uri, source),

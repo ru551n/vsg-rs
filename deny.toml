@@ -17,6 +17,9 @@ allow = [
     "Apache-2.0 WITH LLVM-exception",
     "BSL-1.0",
     "MIT",
+    # MIT with the attribution requirement dropped, so strictly more permissive than MIT.
+    # Reached through the language server's URI parsing (ls-types -> fluent-uri).
+    "MIT-0",
     "MPL-2.0",
     "Unicode-3.0",
     "Unlicense",
@@ -31,6 +34,9 @@ skip = [
     # vhdl_lang's strum brings an older syn than clap's derive does. Nothing we can change
     # without patching a dependency, and both are proc-macro only, so no binary bloat.
     { crate = "syn@2", reason = "vhdl_lang -> strum_macros" },
+    # The language server's dashmap pins hashbrown 0.14 while indexmap has moved to 0.17.
+    # A hash map implementation, so the cost is a little binary size and nothing else.
+    { crate = "hashbrown@0.14", reason = "tower-lsp-server -> dashmap" },
 ]
 
 [sources]

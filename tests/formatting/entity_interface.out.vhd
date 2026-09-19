@@ -5,8 +5,8 @@ library ieee;
 
 entity fifo is
   generic (
-    width      : positive := 8;
-    depth      : positive := 16;
+    width      : positive                     := 8;
+    depth      : positive                     := 16;
     init_value : std_logic_vector(7 downto 0) := (others => '0')
   );
   port (

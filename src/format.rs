@@ -1073,25 +1073,30 @@ impl<'a> Builder<'a> {
         concat(out)
     }
 
-    /// Whether the `:` or `=>` of a list element is aligned, by the VSG rule of its construct.
-    fn alignment_enabled(&self, n: &SyntaxNode, sep: &SyntaxToken) -> bool {
+    /// Whether the `:` or `=>` of a list element is aligned, by the VSG rule of its construct,
+    /// and whether that rule wants the narrowest column (`compact_alignment`).
+    fn alignment_of(&self, n: &SyntaxNode, sep: &SyntaxToken) -> (bool, bool) {
         let align = &self.cfg.align;
         if sep.kind() == T::RightArrow {
-            return align.map_arrows;
+            return (align.map_arrows, align.map_arrows_compact);
         }
         let mut node = n.parent();
         while let Some(p) = node {
             match p.kind() {
-                N::ComponentDeclaration => return align.component_colons,
-                N::EntityDeclaration | N::BlockStatement => return align.interface_colons,
-                N::FunctionSpecification | N::ProcedureSpecification => {
-                    return align.parameter_colons;
+                N::ComponentDeclaration => {
+                    return (align.component_colons, align.component_colons_compact);
                 }
-                N::RecordTypeDefinition => return true,
+                N::EntityDeclaration | N::BlockStatement => {
+                    return (align.interface_colons, align.interface_colons_compact);
+                }
+                N::FunctionSpecification | N::ProcedureSpecification => {
+                    return (align.parameter_colons, align.parameter_colons_compact);
+                }
+                N::RecordTypeDefinition => return (true, true),
                 _ => node = p.parent(),
             }
         }
-        true
+        (true, true)
     }
 
     /// Request alignment padding for list elements that are printed one per line: `:` in
@@ -1099,6 +1104,7 @@ impl<'a> Builder<'a> {
     /// padded to a common width.
     fn align_items(&mut self, items: &[SyntaxElement], group: Option<GroupId>) {
         let mut targets = Vec::new();
+        let mut compact = true;
         for n in items
             .iter()
             .filter_map(vhdl_syntax::syntax::child::Child::as_node)
@@ -1117,11 +1123,17 @@ impl<'a> Builder<'a> {
             let Some(sep) = sep else { continue };
             // Very wide prefixes (long identifier lists) are left unaligned rather than pushing
             // every other element to the right.
+            let (enabled, wants_compact) = self.alignment_of(&n, &sep);
             if let Some(width) = self
                 .flat_width_before(&n, &sep)
-                .filter(|w| *w <= self.cfg.width / 2 && self.alignment_enabled(&n, &sep))
+                .filter(|w| *w <= self.cfg.width / 2 && enabled)
             {
-                targets.push((sep, width));
+                compact &= wants_compact;
+                // What the source itself puts before the separator, measured from the start of
+                // the element so that it can be compared with the flat width.
+                let start = self.parsed.line_col(n.first_token().text_offset()).1;
+                let at = self.parsed.line_col(sep.text_offset()).1;
+                targets.push((sep, width, at.saturating_sub(start)));
             }
             let mode = direct_token(&n, |k| {
                 matches!(
@@ -1146,14 +1158,101 @@ impl<'a> Builder<'a> {
                 pad.group = group;
             }
         }
-        let Some(max) = targets.iter().map(|(_, w)| *w).max() else {
+        // `:=` of interface elements, aligned after the `:` column has been decided.
+        self.align_interface_defaults(items, group, &targets);
+        let Some(mut max) = targets.iter().map(|(_, w, _)| *w).max() else {
             return;
         };
-        for (sep, width) in targets {
+        if !compact && targets.len() > 1 {
+            // The list may already agree on a wider column; without `compact_alignment` that is
+            // a choice to keep rather than an error to correct.
+            // One space is printed anyway, so the column that reproduces the source spacing is
+            // one less than the distance from the start of the element to the separator.
+            let first = targets[0].2.saturating_sub(1);
+            if targets.iter().all(|(_, _, gap)| gap.saturating_sub(1) == first)
+                && first >= max
+                && first <= self.cfg.width / 2
+            {
+                max = first;
+            }
+        }
+        for (sep, width, _) in targets {
             let pad = self.pads.entry(sep.text_offset()).or_default();
             pad.before = max - width;
             pad.group = group;
         }
+    }
+
+    /// `:=` of interface elements in one list (`entity_018`), aligned among themselves. The `:`
+    /// padding decided by the caller shifts them all equally, so it does not change which column
+    /// they share.
+    fn align_interface_defaults(
+        &mut self,
+        items: &[SyntaxElement],
+        group: Option<GroupId>,
+        colons: &[(SyntaxToken, usize, usize)],
+    ) {
+        if !self.cfg.align.interface_assignments || colons.len() < 2 {
+            return;
+        }
+        let mut targets: Vec<(SyntaxToken, usize, usize)> = Vec::new();
+        for n in items
+            .iter()
+            .filter_map(vhdl_syntax::syntax::child::Child::as_node)
+            .filter(|n| n.kind() == N::InterfaceObjectDeclaration)
+        {
+            let Some(value) = n
+                .children()
+                .find(|c| c.kind() == N::InitialValue)
+            else {
+                continue;
+            };
+            let assign = value.first_token();
+            let Some(colon) = direct_token(&n, |k| k == T::Colon) else {
+                continue;
+            };
+            // Width of what stands between the `:` and the `:=`, which is what has to line up.
+            let Some(width) = self.flat_width_between(&colon, &assign) else {
+                continue;
+            };
+            let start = self.parsed.line_col(colon.text_offset()).1;
+            let at = self.parsed.line_col(assign.text_offset()).1;
+            targets.push((assign, width, at.saturating_sub(start).saturating_sub(1)));
+        }
+        if targets.len() < 2 {
+            return;
+        }
+        let mut max = targets.iter().map(|(_, w, _)| *w).max().unwrap_or(0);
+        if !self.cfg.align.interface_assignments_compact {
+            let first = targets[0].2;
+            if targets.iter().all(|(_, _, gap)| *gap == first) && first >= max {
+                max = first;
+            }
+        }
+        for (assign, width, _) in targets {
+            let pad = self.pads.entry(assign.text_offset()).or_default();
+            pad.before = max - width;
+            pad.group = group;
+        }
+    }
+
+    /// Flat width of what stands between two tokens of one element, spaced as it will be
+    /// printed (the same measure as `flat_width_before`).
+    fn flat_width_between(&self, from: &SyntaxToken, to: &SyntaxToken) -> Option<usize> {
+        let start = self.parsed.token_index(from)?;
+        let end = self.parsed.token_index(to)?;
+        let mut width = 0;
+        for i in (start + 1)..end {
+            let t = self.parsed.tokens().get(i)?;
+            if t.leading_trivia().contains_comments() {
+                return None;
+            }
+            if i > start + 1 && self.space_before(t) {
+                width += 1;
+            }
+            width += display_width(&self.token_text(t), self.utf8, 0);
+        }
+        Some(width)
     }
 
     /// VSG alignment of consecutive declarations (names, `:` and `:=`) and assignments
@@ -1201,27 +1300,37 @@ impl<'a> Builder<'a> {
                     .iter()
                     .filter_map(|c| assignment_operator(c).map(|op| (c.clone(), op)))
                     .collect();
-                self.pad_to_common_column(&ops, &HashMap::new());
+                self.pad_to_common_column(&ops, &HashMap::new(), family.compact);
             }
         }
     }
 
     fn align_declarations(&mut self, group: &[SyntaxNode], align: &crate::align::AlignSettings) {
         // Each column is padded in turn; the earlier columns shift the later ones to the right.
-        type Column = (bool, fn(&SyntaxNode) -> Option<SyntaxToken>);
+        type Column = (bool, bool, fn(&SyntaxNode) -> Option<SyntaxToken>);
         let columns: [Column; 3] = [
-            (align.declaration_names.enabled, declared_name),
-            (align.declaration_colons.enabled, |d| {
-                direct_token(d, |k| k == T::Colon)
-            }),
-            (align.declaration_assignments.enabled, |d| {
-                d.children()
-                    .find(|c| c.kind() == N::InitialValue)
-                    .map(|v| v.first_token())
-            }),
+            (
+                align.declaration_names.enabled,
+                align.declaration_names.compact,
+                declared_name,
+            ),
+            (
+                align.declaration_colons.enabled,
+                align.declaration_colons.compact,
+                |d| direct_token(d, |k| k == T::Colon),
+            ),
+            (
+                align.declaration_assignments.enabled,
+                align.declaration_assignments.compact,
+                |d| {
+                    d.children()
+                        .find(|c| c.kind() == N::InitialValue)
+                        .map(|v| v.first_token())
+                },
+            ),
         ];
         let mut shift: HashMap<usize, usize> = HashMap::new();
-        for (enabled, token_of) in columns {
+        for (enabled, compact, token_of) in columns {
             if !enabled {
                 continue;
             }
@@ -1229,7 +1338,7 @@ impl<'a> Builder<'a> {
                 .iter()
                 .filter_map(|d| token_of(d).map(|t| (d.clone(), t)))
                 .collect();
-            for (d, pad) in self.pad_to_common_column(&targets, &shift) {
+            for (d, pad) in self.pad_to_common_column(&targets, &shift, compact) {
                 *shift.entry(d).or_default() += pad;
             }
         }
@@ -1242,6 +1351,7 @@ impl<'a> Builder<'a> {
         &mut self,
         targets: &[(SyntaxNode, SyntaxToken)],
         shift: &HashMap<usize, usize>,
+        compact: bool,
     ) -> Vec<(usize, usize)> {
         let widths: Vec<(usize, &SyntaxToken, usize)> = targets
             .iter()
@@ -1253,7 +1363,28 @@ impl<'a> Builder<'a> {
         if widths.len() < 2 {
             return Vec::new();
         }
-        let max = widths.iter().map(|(_, _, w)| *w).max().unwrap_or(0);
+        let mut max = widths.iter().map(|(_, _, w)| *w).max().unwrap_or(0);
+        if !compact {
+            // The group may already agree on a wider column, which without `compact_alignment`
+            // is a choice to respect rather than an error to correct. Measured from the start of
+            // each declaration, and less the one space that is printed anyway, so that it can be
+            // compared with the flat widths.
+            let gaps: Vec<usize> = targets
+                .iter()
+                .map(|(n, t)| {
+                    let start = self.parsed.line_col(n.first_token().text_offset()).1;
+                    let at = self.parsed.line_col(t.text_offset()).1;
+                    at.saturating_sub(start).saturating_sub(1)
+                })
+                .collect();
+            if let Some(first) = gaps.first()
+                && gaps.iter().all(|gap| gap == first)
+                && *first >= max
+                && *first <= self.cfg.width / 2
+            {
+                max = *first;
+            }
+        }
         let mut added = Vec::new();
         for (node, t, w) in widths {
             let pad = self.pads.entry(t.text_offset()).or_default();

@@ -46,6 +46,12 @@ fn kind_of(rule: &str) -> &'static str {
 /// The layers a run may report, in the order they are printed.
 const KINDS: [&str; 3] = ["style", "layout", "lint"];
 
+/// Whether `--check` asked for a layer. The worker sees the same command line as the parent, so
+/// both answer this the same way without passing it through the request.
+fn wants(args: &Args, layer: &str) -> bool {
+    args.check.split(',').any(|l| l.trim() == layer)
+}
+
 fn diagnostic(parsed: &Parsed, v: &Violation) -> Diagnostic {
     let (line, column) = parsed.line_col(v.start);
     Diagnostic {
@@ -434,6 +440,12 @@ fn check(
     if !parsed.syntax_errors().is_empty() && !parsed.is_blank() {
         let e = vsg_rs::FormatError::Syntax(parsed.syntax_errors().to_vec());
         result.error = Some(describe_error(&parsed, &e));
+        return result;
+    }
+    // Only the lint layer was asked for. The parse above is all this file needs -- it has
+    // already reported any syntax error -- and running the style rules, formatting the file and
+    // re-parsing the result would produce violations that are thrown away further down.
+    if !wants(args, "style") {
         return result;
     }
     let indent_only = args.style == Some(Style::IndentOnly);
@@ -1119,6 +1131,33 @@ fn fix_options(args: &Args) -> Result<FixOptions, String> {
     })
 }
 
+/// What one worker derives from parsing its chunk once: the style layer's cross-file index and
+/// the lint layer's port table. Each is built only if its layer was asked for, so a lint-only run
+/// no longer parses every file to build an index it would discard.
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct Index {
+    project: Option<Project>,
+    entities: Option<crate::elaborate::Entities>,
+}
+
+fn index_of(files: &[PathBuf], style: bool, lint: bool) -> Index {
+    Index {
+        project: style.then(|| project(files)),
+        entities: lint.then(|| crate::elaborate::entities(files)),
+    }
+}
+
+/// Merge two port tables the way `elaborate::entities` does within one: first definition wins.
+fn merge_entities(
+    mut into: crate::elaborate::Entities,
+    from: crate::elaborate::Entities,
+) -> crate::elaborate::Entities {
+    for (name, ports) in from {
+        into.entry(name).or_insert(ports);
+    }
+    into
+}
+
 fn project(files: &[PathBuf]) -> Project {
     files
         .par_iter()
@@ -1448,7 +1487,11 @@ fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOpti
         }
     } else if let Some(indices) = request.index {
         let chosen: Vec<PathBuf> = indices.iter().map(|&i| files[i].clone()).collect();
-        serde_json::to_vec(&project(&chosen))
+        serde_json::to_vec(&index_of(
+            &chosen,
+            wants(args, "style"),
+            wants(args, "lint"),
+        ))
     } else {
         options.project = request.project.map(Arc::new);
         let indices = request.check.unwrap_or_default();
@@ -1488,8 +1531,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         eprintln!("ERROR: --check: unknown layer `{unknown}` (style, lint)");
         return ExitCode::from(1);
     }
-    let style = layers.iter().any(|l| l == "style");
-    let lint = layers.iter().any(|l| l == "lint");
+    let style = wants(&args, "style");
+    let lint = wants(&args, "lint");
     let gate: Option<Vec<String>> = match &args.fail_on {
         Some(text) => {
             let layers: Vec<String> = text.split(',').map(|l| l.trim().to_owned()).collect();
@@ -1668,16 +1711,32 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     } else {
         worker_chunks(&files, args.jobs)
     };
-    // Several files are checked together: uses of their package declarations and entity
-    // interfaces are checked across files.
+    // Several files are read together: the style layer checks uses of package declarations and
+    // entity interfaces across files, and the lint layer needs every entity's port modes. Both
+    // come from one parse per file, in the workers, so neither costs a pass of its own.
+    let mut entities = crate::elaborate::Entities::new();
     if !args.stdin && files.len() > 1 {
         let start = std::time::Instant::now();
         let request = |chunk: &[usize]| serde_json::json!({ "index": chunk });
-        let project = in_workers(command_line, &workers, request).map_or_else(
-            || project(&files),
-            |parts: Vec<Project>| parts.into_iter().fold(Project::new(), Project::merge),
+        let index = in_workers(command_line, &workers, request).map_or_else(
+            || index_of(&files, style, lint),
+            |parts: Vec<Index>| {
+                parts.into_iter().fold(Index::default(), |acc, part| Index {
+                    project: match (acc.project, part.project) {
+                        (Some(a), Some(b)) => Some(Project::merge(a, b)),
+                        (a, b) => a.or(b),
+                    },
+                    entities: match (acc.entities, part.entities) {
+                        (Some(a), Some(b)) => Some(merge_entities(a, b)),
+                        (a, b) => a.or(b),
+                    },
+                })
+            },
         );
-        options.project = Some(Arc::new(project));
+        if let Some(project) = index.project {
+            options.project = Some(Arc::new(project));
+        }
+        entities = index.entities.unwrap_or_default();
         if args.debug {
             eprintln!("DEBUG: project index built in {:.2?}", start.elapsed());
         }
@@ -1755,12 +1814,6 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     }
     // The lint layer: one analysis over the whole file set, after any fixes were written, so its
     // positions match what is now on disk. Style findings stand on their own if it fails.
-    if !style {
-        // Only the lint layer was asked for; the style findings were produced on the way here.
-        for r in &mut results {
-            r.violations.clear();
-        }
-    }
     // The lint layer may have rules of its own: the base configuration with `--lint_configuration`
     // merged over it, so one file can carry a team's lint policy without touching its style one.
     let lint_cfg = if args.lint_configuration.is_empty() {
@@ -1778,9 +1831,11 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     };
     if lint && !args.stdin {
         // Design checks on our own tree: they need no resolution, so they run per file and
-        // survive a file the analyser cannot parse.
-        // What every entity's ports do, so a port map can be read as drivers and readers.
-        let entities = crate::elaborate::entities(&files);
+        // survive a file the analyser cannot parse. The port table comes from the index round
+        // above; a single input never has one, so it is built here.
+        if entities.is_empty() {
+            entities = crate::elaborate::entities(&files);
+        }
         // Why each file counts as a testbench, for `--debug`. Owned, because a worker sends it.
         let mut kinds: std::collections::BTreeMap<PathBuf, String> =
             std::collections::BTreeMap::new();

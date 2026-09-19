@@ -1301,18 +1301,112 @@ fn in_workers<T: serde::de::DeserializeOwned>(
         .filter(|r| r.len() == chunks.len())
 }
 
-/// Worker process: read a request from stdin, answer on stdout.
-/// What one file's lint pass produces: whether it is a testbench, and its findings.
-type PerFile = (Option<(PathBuf, &'static str)>, Vec<(PathBuf, Diagnostic)>);
+/// What one file's lint pass produces: whether it is a testbench, and its findings. It crosses
+/// the worker boundary, so the testbench reason is an owned string rather than a `&'static str`.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PerFile {
+    kind: Option<(PathBuf, String)>,
+    found: Vec<(PathBuf, Diagnostic)>,
+}
 
+/// The per-file half of the lint layer: everything that needs only this file plus the design-wide
+/// port table. Runs in a worker process, so the parser's global token interner is not shared.
+fn lint_files(
+    files: &[PathBuf],
+    indices: &[usize],
+    entities: &crate::elaborate::Entities,
+    lint_cfg: &Config,
+    kind_sources: &crate::testbench::Kinds,
+) -> Result<Vec<PerFile>, String> {
+    // Testbench code gets the `testbench` rule block, hardware the `rtl` one. There are only ever
+    // those two, so they are resolved once rather than per file -- including the naming patterns
+    // (`lint_602`/`lint_603`), whose regular expressions are compiled here and whose errors are
+    // reported before any file is read.
+    let settings_for = |kind| {
+        let cfg = lint_cfg.for_kind(kind);
+        naming_rules(&cfg).map(|naming| (cfg, naming))
+    };
+    let (rtl, testbench) = (settings_for("rtl")?, settings_for("testbench")?);
+    Ok(indices
+        .iter()
+        .map(|&i| {
+            let file = &files[i];
+            // What is on disk now, so positions match the file after `--fix` wrote it.
+            let Ok(source) = std::fs::read(file) else {
+                return PerFile {
+                    kind: None,
+                    found: Vec::new(),
+                };
+            };
+            let parsed = vsg_rs::Parsed::new(source);
+            if !parsed.syntax_errors().is_empty() {
+                return PerFile {
+                    kind: None,
+                    found: Vec::new(),
+                };
+            }
+            let reason = crate::testbench::classify(&parsed, file, kind_sources);
+            let (cfg, naming) = if reason.is_some() { &testbench } else { &rtl };
+            let wiring = crate::elaborate::undriven(&parsed, file, entities);
+            let machines = crate::fsm::check(&parsed, file);
+            let loops = crate::combinational::check(&parsed, file);
+            let crossings = crate::clockdomain::check(&parsed, file, &cfg.synchronizers);
+            let sizes = crate::width::check(&parsed, file);
+            let found = crate::design::check(&parsed, file, naming)
+                .into_iter()
+                .chain(wiring)
+                .chain(machines)
+                .chain(loops)
+                .chain(crossings)
+                .chain(sizes)
+                .filter_map(|f| {
+                    let settings = cfg.rule_by_id(f.rule);
+                    if settings.as_ref().is_some_and(|s| !s.enabled) {
+                        return None;
+                    }
+                    Some((
+                        f.file,
+                        Diagnostic {
+                            line: f.line,
+                            column: f.column,
+                            rule: f.rule.to_owned(),
+                            severity: settings
+                                .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
+                            message: f.message,
+                            // A lint finding never carries a fix.
+                            fixable: false,
+                        },
+                    ))
+                })
+                .collect();
+            PerFile {
+                kind: reason.map(|reason| (file.clone(), reason.to_owned())),
+                found,
+            }
+        })
+        .collect())
+}
+
+/// Worker process: read a request from stdin, answer on stdout.
 fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOptions) -> ExitCode {
     #[derive(serde::Deserialize)]
     struct Request {
         index: Option<Vec<usize>>,
         check: Option<Vec<usize>>,
+        /// The lint layer's per-file pass, with the design-wide facts it needs.
+        lint: Option<LintRequest>,
         project: Option<Project>,
         #[serde(default)]
         sources: Vec<Option<PathBuf>>,
+    }
+    #[derive(serde::Deserialize)]
+    struct LintRequest {
+        indices: Vec<usize>,
+        entities: crate::elaborate::Entities,
+        /// The configuration files the lint layer reads, already in merge order, so a worker
+        /// resolves exactly the configuration the parent would have.
+        configuration: Vec<PathBuf>,
+        libraries: std::collections::BTreeMap<PathBuf, Vec<String>>,
     }
     let mut input = Vec::new();
     let Ok(request) = io::stdin()
@@ -1322,7 +1416,37 @@ fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOpti
     else {
         return ExitCode::from(2);
     };
-    let reply = if let Some(indices) = request.index {
+    let reply = if let Some(lint) = request.lint {
+        let lint_cfg = if lint.configuration.is_empty() {
+            std::borrow::Cow::Borrowed(cfg)
+        } else {
+            match Config::load(&lint.configuration) {
+                Ok(merged) => std::borrow::Cow::Owned(merged),
+                Err(e) => {
+                    eprintln!("ERROR: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        };
+        let kind_sources = crate::testbench::Kinds {
+            patterns: &cfg.testbench_files,
+            libraries: &cfg.testbench_libraries,
+            of_file: &lint.libraries,
+        };
+        match lint_files(
+            files,
+            &lint.indices,
+            &lint.entities,
+            &lint_cfg,
+            &kind_sources,
+        ) {
+            Ok(per_file) => serde_json::to_vec(&per_file),
+            Err(e) => {
+                eprintln!("ERROR: {e}");
+                return ExitCode::from(2);
+            }
+        }
+    } else if let Some(indices) = request.index {
         let chosen: Vec<PathBuf> = indices.iter().map(|&i| files[i].clone()).collect();
         serde_json::to_vec(&project(&chosen))
     } else {
@@ -1657,7 +1781,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         // survive a file the analyser cannot parse.
         // What every entity's ports do, so a port map can be read as drivers and readers.
         let entities = crate::elaborate::entities(&files);
-        let mut kinds: std::collections::BTreeMap<PathBuf, &'static str> =
+        // Why each file counts as a testbench, for `--debug`. Owned, because a worker sends it.
+        let mut kinds: std::collections::BTreeMap<PathBuf, String> =
             std::collections::BTreeMap::new();
         // Which library each file is in, so `testbench_libraries` can name the test ones.
         let of_file = if cfg.testbench_libraries.is_empty() {
@@ -1670,77 +1795,56 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             libraries: &cfg.testbench_libraries,
             of_file: &of_file,
         };
-        // Testbench code gets the `testbench` rule block, hardware the `rtl` one. There are only
-        // ever those two, so they are resolved once rather than per file -- including the naming
-        // patterns (`lint_602`/`lint_603`), whose regular expressions are compiled here and
-        // whose errors are reported before any file is read.
-        let settings_for = |kind| {
-            let cfg = lint_cfg.for_kind(kind);
-            naming_rules(&cfg).map(|naming| (cfg, naming))
+        // The same worker processes the style layer uses: the parser interns token texts in one
+        // global lock, so threads in one process contend on every token (see docs/performance.md).
+        // The design-wide port table is computed once here and sent along, rather than by each
+        // worker over every file.
+        let lint_paths: Vec<PathBuf> = if args.lint_configuration.is_empty() {
+            Vec::new()
+        } else {
+            let mut paths = configuration.clone();
+            paths.extend(args.lint_configuration.iter().cloned());
+            paths
         };
-        let (rtl, testbench) = match (settings_for("rtl"), settings_for("testbench")) {
-            (Ok(rtl), Ok(testbench)) => (rtl, testbench),
-            (Err(e), _) | (_, Err(e)) => {
-                eprintln!("ERROR: {e}");
-                return ExitCode::from(1);
+        let workers = worker_chunks(&files, args.jobs);
+        let request = |chunk: &[usize]| {
+            serde_json::json!({
+                "lint": {
+                    "indices": chunk,
+                    "entities": &entities,
+                    "configuration": &lint_paths,
+                    "libraries": &of_file,
+                }
+            })
+        };
+        let replies: Option<Vec<Vec<PerFile>>> = in_workers(command_line, &workers, request);
+        let per_file: Vec<PerFile> = if let Some(replies) = replies {
+            {
+                // Back in the order the files were given, so a run is reproducible.
+                let mut by_index: Vec<Option<PerFile>> = (0..files.len()).map(|_| None).collect();
+                for (chunk, reply) in workers.iter().zip(replies) {
+                    for (&i, one) in chunk.iter().zip(reply) {
+                        by_index[i] = Some(one);
+                    }
+                }
+                by_index.into_iter().flatten().collect()
+            }
+        } else {
+            // One process is enough, or a worker could not be started: do it here.
+            let indices: Vec<usize> = (0..files.len()).collect();
+            match lint_files(&files, &indices, &entities, &lint_cfg, &kind_sources) {
+                Ok(per_file) => per_file,
+                Err(e) => {
+                    eprintln!("ERROR: {e}");
+                    return ExitCode::from(1);
+                }
             }
         };
-
-        // Each file is checked on its own, so they are checked in parallel. The findings are
-        // merged afterwards in the order the files were given, so a run is reproducible.
-        let per_file: Vec<PerFile> = files
-            .par_iter()
-            .map(|file| {
-                // What is on disk now, so positions match the file after `--fix` wrote it.
-                let Ok(source) = std::fs::read(file) else {
-                    return (None, Vec::new());
-                };
-                let parsed = vsg_rs::Parsed::new(source);
-                if !parsed.syntax_errors().is_empty() {
-                    return (None, Vec::new());
-                }
-                let reason = crate::testbench::classify(&parsed, file, &kind_sources);
-                let (cfg, naming) = if reason.is_some() { &testbench } else { &rtl };
-                let wiring = crate::elaborate::undriven(&parsed, file, &entities);
-                let machines = crate::fsm::check(&parsed, file);
-                let loops = crate::combinational::check(&parsed, file);
-                let crossings = crate::clockdomain::check(&parsed, file, &cfg.synchronizers);
-                let sizes = crate::width::check(&parsed, file);
-                let found = crate::design::check(&parsed, file, naming)
-                    .into_iter()
-                    .chain(wiring)
-                    .chain(machines)
-                    .chain(loops)
-                    .chain(crossings)
-                    .chain(sizes)
-                    .filter_map(|f| {
-                        let settings = cfg.rule_by_id(f.rule);
-                        if settings.as_ref().is_some_and(|s| !s.enabled) {
-                            return None;
-                        }
-                        Some((
-                            f.file,
-                            Diagnostic {
-                                line: f.line,
-                                column: f.column,
-                                rule: f.rule.to_owned(),
-                                severity: settings
-                                    .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
-                                message: f.message,
-                                // A lint finding never carries a fix.
-                                fixable: false,
-                            },
-                        ))
-                    })
-                    .collect();
-                (reason.map(|reason| (file.clone(), reason)), found)
-            })
-            .collect();
-        for (kind, found) in per_file {
-            if let Some((file, reason)) = kind {
+        for one in per_file {
+            if let Some((file, reason)) = one.kind {
                 kinds.insert(file, reason);
             }
-            for (file, diagnostic) in found {
+            for (file, diagnostic) in one.found {
                 if let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == file) {
                     r.violations.push(diagnostic);
                 }
@@ -1791,7 +1895,9 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 if !mapped {
                     // Say this whether or not anything was held back: a clean report from five
                     // rules must not look like a clean report from all of them.
-                    let all = crate::lint::rules().count() + crate::design::RULES.len();
+                    // The same list `--list_rules` and `--explain` read, so the three cannot
+                    // disagree about how many rules the lint layer has.
+                    let all = lint_rules().count();
                     let inactive = crate::lint::rules()
                         .filter(|(id, _)| !crate::lint::needs_no_library_map(id))
                         .count();

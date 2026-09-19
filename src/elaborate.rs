@@ -21,7 +21,7 @@ use crate::design::{all_tokens, assignments, find, path, reads, text_of};
 use crate::lint::Finding;
 
 /// The ports of one entity, by what they do to a signal connected to them.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Ports {
     /// Ports that drive their actual: `out`, `inout`, `buffer`.
     pub(crate) driving: BTreeSet<String>,

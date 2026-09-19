@@ -161,6 +161,18 @@ requirement, because a false accusation about a correct synchroniser costs more 
 is worth. An architecture with one clock is skipped entirely, as is a signal registered on two
 clocks — there is no crossing there anyone can reason about.
 
+### Vector widths
+
+`a <= b` where `a` is eight bits and `b` is sixteen is legal VHDL — both are
+`std_logic_vector`, so a type checker has nothing to say, and the lengths are compared only when
+the design elaborates. `lint_740` compares them in the source.
+
+It measures only what is certain: the statement is `a <= b;` and nothing else, both sides are
+whole objects, and both are declared with a range of integer literals. A slice, a concatenation,
+a conversion or a range mentioning a generic is left alone, because vsg-rs does not evaluate
+those and a guess would be a false accusation about correct code. Most parameterised RTL is
+therefore out of its reach by design; what it does measure, it measures exactly.
+
 ### Wiring
 
 `lint_730` needs to know what an instance does to the signals connected to it, so the run first
@@ -213,6 +225,7 @@ none that were real.
 | `lint_711` | A state of an enumerated state machine has no exit |
 | `lint_720` | A signal depends on itself through combinational logic, with no register in the loop |
 | `lint_730` | A signal is read but nothing drives it: no assignment, and no instance output |
+| `lint_740` | A vector is assigned to one of a different width |
 
 ### Naming registers (off by default)
 

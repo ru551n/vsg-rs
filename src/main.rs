@@ -12,6 +12,7 @@ mod local_rules;
 mod testbench;
 mod vsg_cli;
 mod waivers;
+mod width;
 
 fn main() -> ExitCode {
     vsg_cli::main(&std::env::args().collect::<Vec<_>>())

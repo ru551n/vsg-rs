@@ -930,6 +930,7 @@ fn lint_rules() -> impl Iterator<Item = (&'static str, &'static str)> {
         .chain(crate::fsm::RULES.iter().copied())
         .chain(crate::combinational::RULES.iter().copied())
         .chain(crate::clockdomain::RULES.iter().copied())
+        .chain(crate::width::RULES.iter().copied())
 }
 
 fn explain_rule(rule: &str) -> ExitCode {
@@ -1618,12 +1619,14 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             let machines = crate::fsm::check(&parsed, file);
             let loops = crate::combinational::check(&parsed, file);
             let crossings = crate::clockdomain::check(&parsed, file, &cfg.synchronizers);
+            let sizes = crate::width::check(&parsed, file);
             for f in crate::design::check(&parsed, file, &naming)
                 .into_iter()
                 .chain(wiring)
                 .chain(machines)
                 .chain(loops)
                 .chain(crossings)
+                .chain(sizes)
             {
                 let settings = cfg.rule_by_id(f.rule);
                 if settings.as_ref().is_some_and(|s| !s.enabled) {

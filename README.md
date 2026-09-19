@@ -11,7 +11,7 @@ what it reports, and adds a lint layer that VSG has no equivalent of.
 
 **Status: beta.** The style layer implements VSG 3.35's rule set and is tested against more than
 11,000 real-world files; expect layout changes before 1.0. The lint layer (`vsg-rs lint`) is
-newer: 65 rules today, and the set will grow.
+newer: 66 rules today, and the set will grow.
 
 ## Install
 

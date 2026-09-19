@@ -164,6 +164,22 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
             };
             let (line, column) = parsed.line_col(*offset);
             let through: Vec<&str> = cycle.iter().map(String::as_str).collect();
+            // Every signal on the cycle, in order, so a reader can walk it.
+            // `cycle` closes on the signal it starts with; that repeat says nothing extra.
+            let walk = &cycle[..cycle.len().saturating_sub(1)];
+            let related = walk
+                .iter()
+                .filter_map(|signal| {
+                    let at = offsets.get(signal)?;
+                    let (line, column) = parsed.line_col(*at);
+                    Some(crate::lint::Related {
+                        file: file.to_path_buf(),
+                        line,
+                        column,
+                        message: format!("'{signal}' is driven here"),
+                    })
+                })
+                .collect();
             findings.push(Finding {
                 file: file.to_path_buf(),
                 rule: "lint_720",
@@ -173,6 +189,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
                     "Combinational loop: {} depends on itself with no register in the way",
                     through.join(" -> ")
                 ),
+                related,
             });
         }
     }
@@ -217,6 +234,21 @@ mod tests {
     fn a_loop_through_two_signals_is_found() {
         let found = check_source(&architecture("  y <= z and a;\n  z <= y or b;\n"));
         assert_eq!(found.len(), 1, "{found:?}");
+    }
+
+    #[test]
+    fn the_cycle_is_reported_as_places_not_prose() {
+        let parsed = Parsed::new(
+            architecture("  y <= z and a;\n  z <= y or b;\n")
+                .as_bytes()
+                .to_vec(),
+        );
+        let found = check(&parsed, Path::new("dut.vhd"));
+        assert_eq!(found.len(), 1, "{found:?}");
+        // One location per signal on the cycle, and the closing repeat is not one of them.
+        let lines: Vec<usize> = found[0].related.iter().map(|r| r.line).collect();
+        assert_eq!(lines.len(), 2, "{:?}", found[0].related);
+        assert!(lines.iter().all(|l| *l > 0));
     }
 
     #[test]

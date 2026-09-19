@@ -162,6 +162,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
                     message: format!(
                         "State '{value}' of '{name}' is never entered: nothing assigns it"
                     ),
+                    related: Vec::new(),
                 });
             }
 
@@ -223,6 +224,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
                             "State '{here}' of '{name}' has no exit: its alternative never \
                              assigns another state"
                         ),
+                        related: Vec::new(),
                     });
                 }
             }

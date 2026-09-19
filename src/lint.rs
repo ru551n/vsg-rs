@@ -23,6 +23,19 @@ use vhdl_lang::{Config, Diagnostic, MessageHandler, Project, SrcPos};
 include!(concat!(env!("OUT_DIR"), "/vhdl_libraries.rs"));
 
 /// One finding, in the shape the command line reports.
+/// Another place that is part of the same finding: the other driver, the next signal in a
+/// cycle, the declaration a name resolves to. Structured rather than written into the message,
+/// so the console, SARIF and any future consumer can each present it their own way.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Related {
+    pub(crate) file: PathBuf,
+    /// One-based, as every report format wants it.
+    pub(crate) line: usize,
+    pub(crate) column: usize,
+    pub(crate) message: String,
+}
+
+#[derive(Debug)]
 pub(crate) struct Finding {
     pub(crate) file: PathBuf,
     pub(crate) rule: &'static str,
@@ -30,6 +43,8 @@ pub(crate) struct Finding {
     pub(crate) line: usize,
     pub(crate) column: usize,
     pub(crate) message: String,
+    /// The other places this finding is about. Empty for most rules.
+    pub(crate) related: Vec<Related>,
 }
 
 pub(crate) struct Analysis {
@@ -501,6 +516,7 @@ pub(crate) fn analyse(files: &[PathBuf]) -> Result<Analysis, String> {
             line,
             column,
             message: message(&d),
+            related: Vec::new(),
         });
     }
     findings.sort_by(|a, b| {

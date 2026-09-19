@@ -247,6 +247,7 @@ pub(crate) fn undriven(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec
                 line,
                 column,
                 message: format!("Signal '{signal}' is read but nothing drives it"),
+                related: Vec::new(),
             });
         }
     }

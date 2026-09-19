@@ -579,18 +579,30 @@ pub(crate) fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) ->
             if offsets.len() < 2 || offsets.first() != Some(offset) {
                 continue;
             }
-            let lines: Vec<String> = offsets.iter().map(|o| at(*o).0.to_string()).collect();
             let (line, column) = at(*offset);
+            // Each driver is a place of its own, not a line number inside a sentence.
+            let related = offsets
+                .iter()
+                .map(|o| {
+                    let (line, column) = at(*o);
+                    crate::lint::Related {
+                        file: file.to_path_buf(),
+                        line,
+                        column,
+                        message: format!("'{name}' is driven here"),
+                    }
+                })
+                .collect();
             findings.push(Finding {
                 file: file.to_path_buf(),
                 rule: "lint_601",
                 line,
                 column,
                 message: format!(
-                    "Signal '{name}' is assigned by {} concurrent statements (lines {})",
-                    offsets.len(),
-                    lines.join(", ")
+                    "Signal '{name}' is assigned by {} concurrent statements",
+                    offsets.len()
                 ),
+                related,
             });
         }
 
@@ -617,6 +629,7 @@ pub(crate) fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) ->
                             "Registered signal '{name}' does not have the {what} {}",
                             Naming::quoted(accepted)
                         ),
+                        related: Vec::new(),
                     });
                 };
                 if !naming.suffixes.is_empty()
@@ -648,6 +661,7 @@ pub(crate) fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) ->
                         "Signal '{name}' is not assigned on every path of this combinational \
                          process, which infers a latch"
                     ),
+                    related: Vec::new(),
                 });
             }
         }
@@ -700,6 +714,31 @@ mod tests {
 
     const PREAMBLE: &str = "entity dut is\nend entity;\n\narchitecture rtl of dut is\n  \
                             signal a, b, c, d, clk : bit;\nbegin\n";
+
+    #[test]
+    fn every_driver_is_a_related_location() {
+        let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
+                      signal a, b, q : bit;\nbegin\n  q <= a;\n  q <= b;\n\
+                      end architecture rtl;\n";
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        let found = check(
+            &parsed,
+            std::path::Path::new("dut.vhd"),
+            &Naming {
+                prefixes: Vec::new(),
+                suffixes: Vec::new(),
+            },
+        );
+        let drivers: Vec<&Finding> = found.iter().filter(|f| f.rule == "lint_601").collect();
+        assert_eq!(drivers.len(), 1, "{found:?}");
+        // The lines belong to the finding, not to its message.
+        assert_eq!(drivers[0].related.len(), 2, "{:?}", drivers[0].related);
+        assert!(
+            !drivers[0].message.contains("lines"),
+            "locations should not be written into the message: {}",
+            drivers[0].message
+        );
+    }
 
     #[test]
     fn an_if_without_else_infers_a_latch() {

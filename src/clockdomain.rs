@@ -158,6 +158,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path, synchronizers: &[String]) -> V
                                 "Signal '{name}' is registered on '{other}' and used in logic on \
                                  '{clock}': an unsynchronised clock domain crossing"
                             ),
+                            related: Vec::new(),
                         });
                     }
                 }

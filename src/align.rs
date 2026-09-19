@@ -24,12 +24,17 @@ pub struct Family {
     pub comment_line_ends_group: bool,
     /// Trailing comments only: lines without a comment also count for the column.
     pub include_lines_without_comments: bool,
+    /// VSG's `compact_alignment`. With it (the default) the column is the narrowest one that
+    /// fits: one space past the longest element. Without it, a group that already agrees on a
+    /// wider column keeps it, which is how a project pads its declarations on purpose.
+    pub compact: bool,
 }
 
 impl Family {
     const fn new(blank: bool, comment: bool, all_lines: bool) -> Family {
         Family {
             enabled: true,
+            compact: true,
             blank_line_ends_group: blank,
             comment_line_ends_group: comment,
             include_lines_without_comments: all_lines,
@@ -69,6 +74,15 @@ pub struct AlignSettings {
     pub parameter_colons: bool,
     /// `=>` in generic and port maps and other named associations (`instantiation_010`).
     pub map_arrows: bool,
+    /// `:=` in the generic clauses of entities and blocks (`entity_018`).
+    pub interface_assignments: bool,
+    pub interface_assignments_compact: bool,
+    /// The same four, but `compact_alignment`: whether the column must be the narrowest that
+    /// fits, or a group that already agrees on a wider one may keep it.
+    pub interface_colons_compact: bool,
+    pub component_colons_compact: bool,
+    pub parameter_colons_compact: bool,
+    pub map_arrows_compact: bool,
 }
 
 impl Default for AlignSettings {
@@ -89,6 +103,12 @@ impl Default for AlignSettings {
             component_colons: true,
             parameter_colons: true,
             map_arrows: true,
+            interface_assignments: true,
+            interface_assignments_compact: true,
+            interface_colons_compact: true,
+            component_colons_compact: true,
+            parameter_colons_compact: true,
+            map_arrows_compact: true,
         }
     }
 }

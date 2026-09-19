@@ -843,12 +843,27 @@ impl Config {
                 "include_lines_without_comments",
                 family.include_lines_without_comments,
             );
+            family.compact = yes("compact_alignment", family.compact);
         }
         let enabled = |rule: &str| self.rule_by_id(rule).is_none_or(|s| s.enabled);
         align.interface_colons = enabled("entity_017");
         align.component_colons = enabled("component_017");
         align.parameter_colons = enabled("procedure_410");
         align.map_arrows = enabled("instantiation_010");
+        // `compact_alignment` of the same rules: `no` lets a group keep a wider column it
+        // already agrees on, which is how a project pads its interface lists on purpose.
+        let compact = |id: &str| {
+            self.rule_by_id(id).is_none_or(|s| {
+                s.option_str("compact_alignment")
+                    .map_or_else(|| s.option_bool("compact_alignment").unwrap_or(true), |v| v == "yes")
+            })
+        };
+        align.interface_assignments = enabled("entity_018");
+        align.interface_assignments_compact = compact("entity_018");
+        align.interface_colons_compact = compact("entity_017");
+        align.component_colons_compact = compact("component_017");
+        align.parameter_colons_compact = compact("procedure_410");
+        align.map_arrows_compact = compact("instantiation_010");
         self.format.align = align;
     }
 

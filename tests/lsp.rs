@@ -201,6 +201,11 @@ fn it_does_not_advertise_being_a_vhdl_language_server() {
     // What vsg-rs is: diagnostics (through sync) and formatting.
     assert!(capabilities["textDocumentSync"].is_number());
     assert_eq!(capabilities["documentFormattingProvider"], true);
+    let kinds = capabilities["codeActionProvider"]["codeActionKinds"]
+        .as_array()
+        .expect("the kinds it offers are declared");
+    assert!(kinds.iter().any(|k| k == "quickfix"));
+    assert!(kinds.iter().any(|k| k == "source.fixAll"));
 
     // What belongs to vhdl_ls. Advertising any of these would make editors ask vsg-rs for
     // answers it has no business giving.
@@ -292,6 +297,104 @@ fn an_edit_replaces_the_diagnostics_of_the_version_before_it() {
         lint.is_empty(),
         "the buffer no longer has two drivers: {lint:?}"
     );
+}
+
+#[test]
+fn quick_fixes_come_from_the_fix_the_finding_already_carries() {
+    let source = "entity e is\nend;\n";
+    let got = Session::start().talk_while(
+        &[
+            did_open("file:///tmp/qf.vhd", source),
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": "file:///tmp/qf.vhd" },
+                    "range": {
+                        "start": { "line": 1, "character": 0 },
+                        "end": { "line": 1, "character": 0 }
+                    },
+                    "context": { "diagnostics": [] }
+                }
+            }),
+        ],
+        |seen| seen.iter().any(|m| m["id"] == 2),
+    );
+    let actions = got
+        .iter()
+        .find(|m| m["id"] == 2)
+        .expect("a code action response")["result"]
+        .as_array()
+        .expect("actions")
+        .clone();
+
+    let quick: Vec<&serde_json::Value> =
+        actions.iter().filter(|a| a["kind"] == "quickfix").collect();
+    assert!(!quick.is_empty(), "the cursor is on a fixable finding");
+
+    // Applying one produces what that rule's fix means, not a whole reformat.
+    let edits = quick[0]["edit"]["changes"]["file:///tmp/qf.vhd"]
+        .as_array()
+        .expect("edits");
+    assert_eq!(edits.len(), 1);
+    assert_eq!(edits[0]["newText"], " entity");
+
+    // Fix-all is offered separately, and is the whole document.
+    let fix_all: Vec<&serde_json::Value> = actions
+        .iter()
+        .filter(|a| a["kind"] == "source.fixAll")
+        .collect();
+    assert_eq!(fix_all.len(), 1, "{actions:#?}");
+    let whole = fix_all[0]["edit"]["changes"]["file:///tmp/qf.vhd"]
+        .as_array()
+        .expect("edits");
+    assert_eq!(whole.len(), 1, "one edit for the document");
+    assert_eq!(whole[0]["newText"], "entity e is\nend entity e;\n");
+}
+
+#[test]
+fn fix_all_applies_only_what_the_command_line_would_apply() {
+    // `a : bit` has an unsafe fix (adding the `in` mode changes an interface), which `--fix`
+    // leaves alone without `--unsafe_fixes`. Fix-all must leave it alone too.
+    let source = "entity e is\n  port (a : bit);\nend entity e;\n";
+    let got = Session::start().talk_while(
+        &[
+            did_open("file:///tmp/unsafe.vhd", source),
+            serde_json::json!({
+                "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": "file:///tmp/unsafe.vhd" },
+                    "range": {
+                        "start": { "line": 1, "character": 9 },
+                        "end": { "line": 1, "character": 9 }
+                    },
+                    "context": { "diagnostics": [], "only": ["source.fixAll"] }
+                }
+            }),
+        ],
+        |seen| seen.iter().any(|m| m["id"] == 2),
+    );
+    let actions = got
+        .iter()
+        .find(|m| m["id"] == 2)
+        .expect("a code action response")["result"]
+        .as_array()
+        .expect("actions")
+        .clone();
+    // Only what was asked for.
+    assert!(
+        actions.iter().all(|a| a["kind"] == "source.fixAll"),
+        "{actions:#?}"
+    );
+    for action in &actions {
+        let edits = action["edit"]["changes"]["file:///tmp/unsafe.vhd"]
+            .as_array()
+            .expect("edits");
+        let text = edits[0]["newText"].as_str().expect("text");
+        assert!(
+            !text.contains("in    bit"),
+            "an unsafe fix must not be applied by fix-all: {text:?}"
+        );
+    }
 }
 
 #[test]

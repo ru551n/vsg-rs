@@ -16,11 +16,13 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
-    Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
-    InitializeParams, InitializeResult, InitializedParams, Location, MessageType, NumberOrString,
-    OneOf, Position, Range, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Uri,
+    CodeAction, CodeActionKind, CodeActionOptions, CodeActionOrCommand, CodeActionParams,
+    CodeActionProviderCapability, CodeActionResponse, Diagnostic, DiagnosticRelatedInformation,
+    DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentFormattingParams, InitializeParams, InitializeResult,
+    InitializedParams, Location, MessageType, NumberOrString, OneOf, Position, Range,
+    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+    Uri, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 use vsg_rs::Config;
@@ -179,6 +181,46 @@ fn diagnose(path: &Path, text: &str) -> Vec<Diagnostic> {
     out
 }
 
+/// Whether two ranges touch. An editor asks for the actions of a selection, which is usually a
+/// cursor: a zero-width range on the line of the diagnostic.
+fn overlaps(a: &Range, b: &Range) -> bool {
+    a.start <= b.end && b.start <= a.end
+}
+
+/// The edits of a safe fix, as the document sees them.
+///
+/// `--fix` applies edits in (start, rank, end) order and two of them can insert at one offset, so
+/// the order is settled here and same-offset insertions are merged. An editor applies a
+/// `WorkspaceEdit`'s edits as a set, and would otherwise be free to reverse them.
+fn edits_of(text: &str, fix: &vsg_rs::rules::Fix) -> Vec<TextEdit> {
+    let mut edits: Vec<&vsg_rs::rules::Edit> = fix.edits.iter().collect();
+    edits.sort_by_key(|e| (e.start, e.rank, e.end));
+    let mut merged: Vec<vsg_rs::rules::Edit> = Vec::new();
+    for edit in edits {
+        match merged.last_mut() {
+            Some(last) if last.start == edit.start && last.end == edit.end => {
+                last.text.push_str(&edit.text);
+            }
+            _ => merged.push(edit.clone()),
+        }
+    }
+    merged
+        .iter()
+        .map(|edit| TextEdit {
+            range: Range::new(position_of(text, edit.start), position_of(text, edit.end)),
+            new_text: edit.text.clone(),
+        })
+        .collect()
+}
+
+/// One document's edits, as a workspace edit.
+fn workspace_edit(uri: &Uri, edits: Vec<TextEdit>) -> WorkspaceEdit {
+    WorkspaceEdit {
+        changes: Some(std::iter::once((uri.clone(), edits)).collect()),
+        ..WorkspaceEdit::default()
+    }
+}
+
 impl LanguageServer for Backend {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         // A server can be initialized again; nothing from a previous session should survive it.
@@ -196,6 +238,15 @@ impl LanguageServer for Backend {
                     TextDocumentSyncKind::FULL,
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Options(
+                    CodeActionOptions {
+                        code_action_kinds: Some(vec![
+                            CodeActionKind::QUICKFIX,
+                            CodeActionKind::SOURCE_FIX_ALL,
+                        ]),
+                        ..CodeActionOptions::default()
+                    },
+                )),
                 // Everything else is deliberately absent. vsg-rs is not a VHDL language server:
                 // completion, hover, definition, references, rename and symbols belong to one,
                 // and advertising them would make editors ask vsg-rs instead of asking it.
@@ -257,6 +308,92 @@ impl LanguageServer for Backend {
         self.documents.write().await.remove(&uri);
         // The editor stops showing a closed file's diagnostics only if they are withdrawn.
         self.client.publish_diagnostics(uri, Vec::new(), None).await;
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        let uri = params.text_document.uri;
+        let Some(text) = self
+            .documents
+            .read()
+            .await
+            .get(&uri)
+            .map(|d| d.text.clone())
+        else {
+            return Ok(None);
+        };
+        let range = params.range;
+        let wanted = params.context.only.clone();
+        let path = path_of(&uri);
+        let actions = tokio::task::spawn_blocking({
+            let uri = uri.clone();
+            move || {
+                // An editor asking for one kind of action should not be given the others.
+                let allows = |kind: &CodeActionKind| {
+                    wanted
+                        .as_ref()
+                        .is_none_or(|only| only.iter().any(|k| k == kind))
+                };
+                let cfg = config_for(&path);
+                let parsed = vsg_rs::Parsed::new(text.as_bytes().to_vec());
+                let mut actions: Vec<CodeActionOrCommand> = Vec::new();
+
+                // One action per violation the cursor is on, from the fix it already carries.
+                // Only a fix vsg-rs would apply itself is offered: the same test `--fix` uses, so
+                // an editor never offers something the command line would refuse.
+                if allows(&CodeActionKind::QUICKFIX) {
+                    for violation in vsg_rs::rules::check_with(&parsed, &cfg, None) {
+                        let Some(fix) = violation
+                            .fix
+                            .as_ref()
+                            .filter(|f| f.safety == vsg_rs::rules::FixSafety::Safe)
+                        else {
+                            continue;
+                        };
+                        let at = Range::new(
+                            position_of(&text, violation.start),
+                            position_of(&text, violation.end),
+                        );
+                        if !overlaps(&at, &range) {
+                            continue;
+                        }
+                        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                            title: format!("{}: {}", violation.rule, violation.message),
+                            kind: Some(CodeActionKind::QUICKFIX),
+                            edit: Some(workspace_edit(&uri, edits_of(&text, fix))),
+                            ..CodeAction::default()
+                        }));
+                    }
+                }
+
+                // Fix all: the whole document as `--fix` would write it, which applies the safe
+                // fixes and formats. Unsafe fixes are not part of it, here or there.
+                if allows(&CodeActionKind::SOURCE_FIX_ALL) {
+                    let fixed = vsg_rs::fix_with(&parsed, &cfg, &vsg_rs::FixOptions::default())
+                        .ok()
+                        .map(|out| out.output)
+                        .and_then(|out| String::from_utf8(out).ok());
+                    if let Some(fixed) = fixed.filter(|fixed| *fixed != text) {
+                        let whole = Range::new(Position::new(0, 0), position_of(&text, text.len()));
+                        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                            title: "Fix all vsg-rs findings".to_owned(),
+                            kind: Some(CodeActionKind::SOURCE_FIX_ALL),
+                            edit: Some(workspace_edit(
+                                &uri,
+                                vec![TextEdit {
+                                    range: whole,
+                                    new_text: fixed,
+                                }],
+                            )),
+                            ..CodeAction::default()
+                        }));
+                    }
+                }
+                actions
+            }
+        })
+        .await
+        .unwrap_or_default();
+        Ok(Some(actions))
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {

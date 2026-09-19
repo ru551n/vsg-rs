@@ -28,9 +28,18 @@ giving. A test asserts each of those is absent.
 | `textDocument/didOpen`, `didChange`, `didClose` | full-document sync |
 | `textDocument/publishDiagnostics` | the style rules and the lint layer, with `relatedInformation` |
 | `textDocument/formatting` | one edit for the whole document |
+| `textDocument/codeAction` | a quick fix per fixable finding, and `source.fixAll` |
 
-Not yet implemented: code actions and fix-all. The fixes exist and are structured; only the
-mapping is missing.
+## Quick fixes and fix-all
+
+A quick fix comes from the fix the finding already carries, so what an editor offers is what
+`--fix` would do to that one violation. **Fix-all** (`source.fixAll`) is the whole document as
+`--fix` would write it.
+
+Only fixes vsg-rs would apply itself are offered, in either form. A fix VSG does not apply by
+default — the ones `--unsafe_fixes` exists for — is never offered by a quick fix and never
+included in fix-all, because it may change what the design does. One safety rule governs the
+command line, quick fixes and fix-all alike; a test asserts fix-all leaves an unsafe fix alone.
 
 ## It analyses the buffer
 

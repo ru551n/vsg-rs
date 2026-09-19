@@ -276,9 +276,55 @@ jobs:
           packages-dir: dist
           attestations: ${{ github.event.repository.visibility == 'public' }}
 
+  # One VSIX per platform, each carrying the server built in this same run. Nothing is fetched
+  # from a previous release, so the bundled binary is provably the one this tag produced.
+  vscode:
+    name: VS Code extension
+    needs: binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: binaries-*
+          path: archives
+          merge-multiple: true
+      # The binary jobs publish archives; the packaging script wants the executables.
+      - name: Unpack the servers
+        shell: bash
+        run: |
+          mkdir -p servers
+          for archive in archives/*.tar.gz; do
+            [ -e "$archive" ] || continue
+            tar xzf "$archive" -C servers
+          done
+          for archive in archives/*.zip; do
+            [ -e "$archive" ] || continue
+            unzip -q "$archive" -d servers
+          done
+          find servers -type f -name 'vsg-rs*' -print
+      - run: npm ci
+        working-directory: editors/vscode
+      - run: npm run compile
+        working-directory: editors/vscode
+      - name: Package
+        working-directory: editors/vscode
+        run: node scripts/package.mjs --binaries ../../servers
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          # The release job collects artifacts matching `*-*`, so the name needs a hyphen or the
+          # VSIX files would be built and then never attached to anything.
+          name: vsix-extension
+          path: editors/vscode/*.vsix
+
   github-release:
     name: GitHub release
-    needs: [publish, binaries]
+    needs: [publish, binaries, vscode]
     runs-on: ubuntu-latest
     permissions:
       contents: write

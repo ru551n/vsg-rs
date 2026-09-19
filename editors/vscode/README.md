@@ -23,13 +23,8 @@ alongside; the two are independent and neither requires the other.
 
 ## Getting the server
 
-The extension currently needs `vsg-rs` installed:
-
-```sh
-pip install vsg-rs        # or: uv tool install vsg-rs
-```
-
-By default it runs `vsg-rs` from your `PATH`. To use a particular build, see
+Nothing to install: the extension ships the server for your platform and uses it. To run a
+different one — a system install, or a local build — see
 [choosing a server](docs/server-selection.md).
 
 ## Make it the VHDL formatter

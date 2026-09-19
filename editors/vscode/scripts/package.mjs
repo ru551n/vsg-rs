@@ -11,7 +11,7 @@
 // `vsg-rs-<tag>-<rust-target>[.exe]`, or plain `vsg-rs`/`vsg-rs.exe` in a per-target subdirectory.
 
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /** Every platform the release builds a server for, as VS Code names them. */
@@ -29,17 +29,29 @@ function argument(name) {
   return at === -1 ? undefined : process.argv[at + 1];
 }
 
-/** The server built for `rustTarget`, wherever the caller put it. */
+/**
+ * The server built for `rustTarget`, wherever the caller put it.
+ *
+ * The release publishes archives that unpack to `vsg-rs-<tag>-<target>/vsg-rs`, so the target is
+ * in a directory name rather than in the file name. Searching the tree covers that as well as a
+ * plain `<target>/vsg-rs`, or a file with the target in its own name.
+ */
 function findServer(directory, rustTarget) {
-  const windows = rustTarget.includes("windows");
-  const exact = join(directory, rustTarget, windows ? "vsg-rs.exe" : "vsg-rs");
-  if (existsSync(exact)) {
-    return exact;
-  }
-  const named = readdirSync(directory).find(
-    (entry) => entry.includes(rustTarget) && statSync(join(directory, entry)).isFile(),
-  );
-  return named === undefined ? undefined : join(directory, named);
+  const wanted = rustTarget.includes("windows") ? "vsg-rs.exe" : "vsg-rs";
+  const found = [];
+  const walk = (at) => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const path = join(at, entry.name);
+      if (entry.isDirectory()) {
+        walk(path);
+      } else if (entry.name === wanted || entry.name.includes(rustTarget)) {
+        found.push(path);
+      }
+    }
+  };
+  walk(directory);
+  // The target has to appear somewhere in the path, or a Linux build would answer for Windows.
+  return found.find((path) => path.includes(rustTarget));
 }
 
 const binaries = resolve(argument("--binaries") ?? "binaries");

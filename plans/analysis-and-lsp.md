@@ -197,9 +197,8 @@ flag new public API; that is intended.
 ### PR 4 — Analyse in-memory sources
 **Goal** `analysis::check(&[Source], &Config) -> Vec<Diagnostic>` where a `Source` may carry
 buffer text; remove the `!args.stdin` exclusion so `--stdin --check lint` works. **Motivation**
-unsaved editor buffers. **Risk** medium — `vhdl_lang`'s `Project` is path-oriented and may need a
-temporary-file or overlay strategy; **this is the main unknown in the whole plan** and should be
-spiked before the PR is sized. **Tests** lint findings from stdin match findings from the same
+unsaved editor buffers. **Risk** low — spiked (§10.6): `Source::inline` + `Project::update_source` is the supported
+overlay path and needs no temporary file. **Tests** lint findings from stdin match findings from the same
 bytes on disk. **Size** medium.
 
 ### PR 5 — `vsg-rs lsp`: minimal server
@@ -224,11 +223,11 @@ instances). Migrate the rules §10.4 says can become queries; leave the three th
 the point. **Size** large. **Risk** medium.
 
 ### PR 7b — Keep the resolved symbol table
-**Goal** stop discarding `vhdl_lang`'s analysed `Project` (§10.5) and expose the symbol/reference
-information the brief's later analyses need. **Motivation** it is already built and paid for.
-**Size** medium. **Risk** medium — depends on what `vhdl_lang` 0.88 exposes publicly, which must be
-spiked first. **Blocks** unused imports, shadowing, call graph, exact case analysis, reference
-graph.
+**Goal** stop discarding the analysed `Project` (§10.5) and expose symbol/reference queries.
+**Spiked (§10.6): the minimal change is to keep the `Project` and the path list alive past
+`analyse()`**, then `get_source(path)` + `find_all_entity_references(&source)` yields
+`(SrcPos, EntRef)` for a whole file in one call. **Size** small-to-medium. **Risk** low.
+**Blocks** shadowing, call graph, reference graph.
 
 ### PR 8+ — New exact diagnostics
 In dependency order, each small and independently valuable: unused/duplicate `use` and `library`
@@ -292,9 +291,8 @@ review and safe to land. PR 5 then becomes a thin adapter rather than a feature.
 extension starts only once `vsg-rs lsp` speaks the protocol, so that VS 1 can be validated against
 a real server.
 
-PR 4 carries the one genuine unknown — whether `vhdl_lang`'s `Project` can analyse an overlay
-buffer without a temporary file. That should be spiked first; if it cannot, the fallback is to
-write the buffer to a scratch file, which is acceptable but must be a deliberate decision.
+PR 4's unknown has been resolved by the spike (§10.6): the overlay API exists and is the one
+vhdl_ls itself uses, so no fallback is needed.
 
 ---
 
@@ -357,6 +355,50 @@ and symbol information are dropped** — `Analysis` keeps only findings (`lint.r
 project-level structure holds signals, drivers or widths across files.
 
 **This is the single biggest missed opportunity in the codebase**: a fully resolved symbol table is
-built, used for 56 diagnostics, and thrown away. Most of the brief's proposed analyses — unused
-imports, shadowing, call graph, exact case analysis, reference graph — want exactly that table.
-Retaining it is the real PR 7, and it should be scoped before the fact-caching work.
+built, used for 56 diagnostics, and thrown away. Most of the brief's proposed analyses want exactly
+that table.
+
+### 10.6 Spike result: what `vhdl_lang` 0.88 actually exposes
+
+Investigated against the vendored source. **The information is reachable; vsg-rs discards the
+`Project` value, not the data.** `Project` keeps the analysed root alive and exposes a semantic
+query API on it.
+
+Reachable and cheap:
+
+* `Project::find_all_entity_references(&Source) -> Vec<(SrcPos, EntRef)>` (`project.rs:344`) —
+  every resolved position in a file with the entity it resolves to, **in one call**.
+* `find_declaration`, `find_definition`, `item_at_cursor`, `find_all_references(ent)`,
+  `public_symbols`, `document_symbols`, `find_implementation` (`project.rs:275-353`).
+* `AnyEnt` (`named_entity.rs:264`) has public `id`, `parent`, `designator`, `decl_pos`,
+  `src_span`, `kind`, plus `path_name()`, `signature()`, `is_subprogram()`.
+* A public visitor: `ast::search::{Searcher, Search}` (`ast/search.rs:85,121`), implemented across
+  the whole AST.
+
+**In-memory analysis is a supported path, not a workaround.** `Source::inline(path, text)`
+(`data/source.rs:140`) plus `Project::update_source` (`project.rs:201`) plus `analyse()` is exactly
+what vhdl_ls uses for unsaved buffers; `update_config` documents re-parsing "from in-memory source
+(required for incremental document updates)". **PR 4's main unknown is resolved: no temporary files
+are needed, and its risk drops from medium to low.**
+
+Limits found:
+
+* `DesignRoot` is **not public**, so every prebuilt searcher (`ItemAtCursor`, `FindAllEnt`,
+  `FindAllReferences`) is public-in-name-only — their constructors take `&DesignRoot`. A custom
+  `Searcher` is required, and an `EntityId -> EntRef` map must be built by hand from
+  `find_all_entity_references` plus `public_symbols`.
+* `SourceFile` exposes only `num_lines()`; keep your own path list and use `get_source(&Path)`.
+* `ErrorCode` is not exported, confirming the existing `format!("{:?}")` workaround in `lint.rs`.
+
+Consequences for the later PRs:
+
+| Proposed analysis | Verdict | Why |
+|---|---|---|
+| Declarations with zero references | **cheap** | `find_all_entity_references` gives it directly; `enable_unused_declaration_detection` already surfaces it as `lint_004` |
+| Subprogram call graph | **medium** | callee side is exact and overload-resolved; the caller side needs our own scope-containment tracking, as `Searcher` has no enter/leave events |
+| Unused `use` clauses | **large, not cheap** | clauses and their resolved targets are visitable, but **nothing records whether a visibility was consumed** — it must be reimplemented by intersecting each package's region with the unit's referenced ids |
+| Exact case analysis | **blocked as specified** | `Choice` (`ast.rs:217`) carries **no resolved type**; types are not written back for choices. The selector's type is only reachable indirectly through an object's subtype. This is not the cheap semantic win the brief assumes |
+| Shadowing | **medium** | `AnyEnt::parent` and `path_name()` give the scope chain; region contents come from matching exported `AnyEntKind` variants |
+
+So the ordering changes: **unused imports and case analysis are no longer early, cheap wins**, and
+zero-reference and call-graph work moves ahead of them.

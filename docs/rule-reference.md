@@ -17,7 +17,7 @@ Reported by the VHDL front end from a resolved symbol table: a name, its declara
 | `lint_003` | An item that may not appear in a sensitivity list. |
 | `lint_004` | A declaration is never used. |
 | `lint_005` | `library work` is implicit and does not need declaring. |
-| `lint_006` | A context declared but never used. |
+| `lint_006` | A context clause is not attached to any design unit. |
 | `lint_100` | A name cannot be resolved to any declaration. |
 | `lint_101` | A declaration hides or repeats another. |
 | `lint_102` | A declaration is used before it is declared. |

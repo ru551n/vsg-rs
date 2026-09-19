@@ -83,7 +83,7 @@ pub(crate) static CODES: &[(&str, &str, &str)] = &[
     (
         "UnassociatedContext",
         "lint_006",
-        "A context declared but never used.",
+        "A context clause is not attached to any design unit.",
     ),
     // Names and declarations
     (

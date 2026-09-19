@@ -24,8 +24,13 @@ struct Session {
 
 impl Session {
     fn start() -> Session {
+        Session::start_in(&std::env::current_dir().expect("a working directory"))
+    }
+
+    fn start_in(dir: &std::path::Path) -> Session {
         let mut child = Command::new(env!("CARGO_BIN_EXE_vsg-rs"))
             .arg("lsp")
+            .current_dir(dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -297,6 +302,42 @@ fn an_edit_replaces_the_diagnostics_of_the_version_before_it() {
         lint.is_empty(),
         "the buffer no longer has two drivers: {lint:?}"
     );
+}
+
+#[test]
+fn the_front_ends_rules_reach_the_editor_too() {
+    // A project with a library map, so the rules that resolve names across files can run.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("vhdl_ls.toml"),
+        "[libraries]\nmylib.files = [\"src/*.vhd\"]\n",
+    )
+    .expect("write config");
+    let file = dir.path().join("src/e.vhd");
+    let source = "entity e is\nend entity e;\n\narchitecture rtl of e is\n\n  \
+                  signal spare : bit;\n\nbegin\n\nend architecture rtl;\n";
+    std::fs::write(&file, source).expect("write source");
+
+    let uri = format!("file://{}", file.display());
+    let mut session = Session::start_in(dir.path());
+    let got = session.talk_while(&[did_open(&uri, source)], |seen| {
+        seen.iter()
+            .any(|m| m["method"] == "textDocument/publishDiagnostics")
+    });
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .expect("diagnostics were published");
+    let codes: Vec<&str> = published["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .filter_map(|d| d["code"].as_str())
+        .collect();
+    // lint_004 comes from the VHDL front end, not from vsg-rs's own rules: an editor sees what
+    // `--check style,lint` sees, not a subset of it.
+    assert!(codes.contains(&"lint_004"), "{codes:?}");
 }
 
 #[test]

@@ -148,7 +148,31 @@ fn diagnose(path: &Path, text: &str) -> Vec<Diagnostic> {
         });
     }
 
-    for finding in analysis::findings_for(&parsed, path, &cfg) {
+    // The front end's rules too, so an editor sees what `--check style,lint` sees. They need the
+    // project's library map; without one only a few of them report, exactly as on the command
+    // line. The buffer stands in for the file, so an unsaved edit is what gets analysed.
+    let resolved = analysis::lint::analyse(&[analysis::lint::Source::buffer(
+        path.to_path_buf(),
+        text.as_bytes().to_vec(),
+    )]);
+    let front_end = match resolved {
+        Ok(analysis) if analysis.mapped => analysis.findings,
+        // Without a library map most rules cannot run; the few that can are still worth having.
+        Ok(analysis) => analysis
+            .findings
+            .into_iter()
+            .filter(|f| analysis::lint::needs_no_library_map(f.rule))
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+
+    for finding in analysis::findings_for(&parsed, path, &cfg)
+        .into_iter()
+        .chain(front_end)
+    {
+        if cfg.rule_by_id(finding.rule).is_some_and(|s| !s.enabled) {
+            continue;
+        }
         let at = position_at(finding.line, finding.column);
         // Structured, not flattened into the message: an editor can jump to each one.
         let related: Vec<DiagnosticRelatedInformation> = finding

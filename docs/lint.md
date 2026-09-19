@@ -19,6 +19,14 @@ vsg-rs lint --recursive src --check style,lint  # both in one run
 file called `lint` still wins and every VSG command line keeps working unchanged. Underneath it
 is `--check`, which takes the layers as a comma-separated list.
 
+Every finding carries the layer it came from. `--statistics` shows it per rule, and `--fail_on`
+decides which layers make the run fail — the others are still reported:
+
+```sh
+vsg-rs --recursive src --check style,lint --fail_on lint   # lint gates CI, style only informs
+vsg-rs --explain lint_600                                  # what one rule checks, and its layer
+```
+
 `--fix` belongs to `style` and is refused without it: a lint finding never carries a fix, because
 fixing one would change what the design does.
 

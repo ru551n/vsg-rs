@@ -26,6 +26,22 @@ struct Diagnostic {
     message: String,
 }
 
+/// Which layer a finding came from, derived from its rule id so that it cannot disagree with
+/// what actually produced it: `lint` for the lint layer, `layout` for what the formatter decides,
+/// `style` for the rest of VSG's rules.
+fn kind_of(rule: &str) -> &'static str {
+    if rule.starts_with("lint_") {
+        "lint"
+    } else if rule == "format" || rules::owner_of(rule) == rules::Owner::Formatter {
+        "layout"
+    } else {
+        "style"
+    }
+}
+
+/// The layers a run may report, in the order they are printed.
+const KINDS: [&str; 3] = ["style", "layout", "lint"];
+
 fn diagnostic(parsed: &Parsed, v: &Violation) -> Diagnostic {
     let (line, column) = parsed.line_col(v.start);
     Diagnostic {
@@ -240,6 +256,14 @@ struct Args {
     /// order (vsg-rs extension)
     #[arg(long = "lint_configuration", value_name = "LINT_CONFIGURATION", num_args = 1..)]
     lint_configuration: Vec<PathBuf>,
+    /// Describe one rule: what it checks, which layer it belongs to and whether it is fixed
+    /// (vsg-rs extension)
+    #[arg(long = "explain", value_name = "RULE")]
+    explain: Option<String>,
+    /// Which layers make the run fail, comma separated: `style`, `layout`, `lint`. By default
+    /// any error-severity violation does (vsg-rs extension)
+    #[arg(long = "fail_on", value_name = "LAYERS")]
+    fail_on: Option<String>,
     /// Which layers to run, comma separated: `style` (VSG's rules, the default) and `lint`
     /// (rules that need name resolution). `vsg-rs lint ...` is the short way to say
     /// `--check lint` (vsg-rs extension)
@@ -569,24 +593,47 @@ fn statistics_report(results: &[FileResult], cfg: &Config) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "{:width$}  {:>10}  {:>5}  --fix",
-        "rule", "violations", "files"
+        "{:width$}  {:>10}  {:>5}  {:<6}  --fix",
+        "rule", "violations", "files", "layer"
     );
     for (rule, n, files) in &rows {
-        // Layout is always fixed by formatting; a rule is fixed if its fixes are enabled.
-        let fixed = if is_layout(rule) || cfg.rule_by_id(rule).is_some_and(|s| s.fixable) {
+        // Layout is always fixed by formatting, and a rule is fixed if its fixes are enabled;
+        // a lint finding never carries a fix, because fixing one would change the design.
+        let fixed = if kind_of(rule) == "lint" {
+            "no"
+        } else if is_layout(rule) || cfg.rule_by_id(rule).is_some_and(|s| s.fixable) {
             "yes"
         } else {
             "no"
         };
-        let _ = writeln!(out, "{rule:width$}  {n:>10}  {files:>5}  {fixed}");
+        let _ = writeln!(
+            out,
+            "{rule:width$}  {n:>10}  {files:>5}  {:<6}  {fixed}",
+            kind_of(rule)
+        );
     }
     let total: usize = rows.iter().map(|(_, n, _)| n).sum();
     let files = results.iter().filter(|r| !r.violations.is_empty()).count();
+    let per_layer: Vec<String> = KINDS
+        .iter()
+        .filter_map(|kind| {
+            let n: usize = rows
+                .iter()
+                .filter(|(rule, ..)| kind_of(rule) == *kind)
+                .map(|(_, n, _)| n)
+                .sum();
+            (n > 0).then(|| format!("{n} {kind}"))
+        })
+        .collect();
     let _ = writeln!(
         out,
-        "\n{total} violation(s) of {} rule(s) in {files} file(s)",
-        rows.len()
+        "\n{total} violation(s) of {} rule(s) in {files} file(s){}",
+        rows.len(),
+        if per_layer.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", per_layer.join(", "))
+        }
     );
     out
 }
@@ -871,6 +918,53 @@ fn sarif_report(results: &[FileResult]) -> String {
         }]
     });
     serde_json::to_string_pretty(&doc).unwrap_or_default()
+}
+
+/// `--explain RULE`: what one rule is, in the words vsg-rs has for it.
+fn explain_rule(rule: &str) -> ExitCode {
+    let mut out = io::stdout().lock();
+    let kind = kind_of(rule);
+    let described = crate::lint::rules()
+        .chain(crate::design::RULES.iter().copied())
+        .find(|(id, _)| *id == rule)
+        .map(|(_, description)| description.to_owned())
+        .or_else(|| rules::info(rule).map(|info| info.description.to_owned()))
+        .or_else(|| {
+            (kind == "layout" && rules::is_known_rule(rule))
+                .then(|| "Layout, decided by the formatter and applied by --fix.".to_owned())
+        });
+    let Some(description) = described else {
+        eprintln!("ERROR: unknown rule `{rule}`; `--list_rules` lists them all");
+        return ExitCode::from(1);
+    };
+    let _ = writeln!(out, "{rule}\n\n{description}\n");
+    let _ = writeln!(out, "Layer:     {kind}");
+    let _ = writeln!(
+        out,
+        "Run by:    {}",
+        if kind == "lint" {
+            "vsg-rs lint (or --check style,lint)"
+        } else {
+            "vsg-rs (the default layer)"
+        }
+    );
+    let _ = writeln!(
+        out,
+        "Fixed:     {}",
+        match kind {
+            "lint" => "no, a lint finding never carries a fix",
+            "layout" => "yes, by --fix",
+            _ => "only if the rule's fixes are enabled (see --fix)",
+        }
+    );
+    if kind != "lint" {
+        let _ = writeln!(
+            out,
+            "\nVSG documents this rule:\n  https://vhdl-style-guide.readthedocs.io/en/latest/{}_rules.html",
+            rule.rsplit_once('_').map_or(rule, |(head, _)| head)
+        );
+    }
+    ExitCode::SUCCESS
 }
 
 fn list_rules() -> ExitCode {
@@ -1183,9 +1277,26 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     }
     let style = layers.iter().any(|l| l == "style");
     let lint = layers.iter().any(|l| l == "lint");
+    let gate: Option<Vec<String>> = match &args.fail_on {
+        Some(text) => {
+            let layers: Vec<String> = text.split(',').map(|l| l.trim().to_owned()).collect();
+            if let Some(unknown) = layers.iter().find(|l| !KINDS.contains(&l.as_str())) {
+                eprintln!(
+                    "ERROR: --fail_on: unknown layer `{unknown}` ({})",
+                    KINDS.join(", ")
+                );
+                return ExitCode::from(1);
+            }
+            Some(layers)
+        }
+        None => None,
+    };
     if !style && (args.fix || args.fix_only.is_some()) {
         eprintln!("ERROR: --fix belongs to the style layer; add `style` to --check");
         return ExitCode::from(1);
+    }
+    if let Some(rule) = &args.explain {
+        return explain_rule(rule);
     }
     if args.list_rules {
         return list_rules();
@@ -1670,7 +1781,16 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         }
         // Editors pipe through `--stdin --fix`: printed code means success even if violations
         // remain (VSG itself cannot fix stdin).
-        failed |= counts(r).0 > 0 && !(args.stdin && args.fix);
+        let counted = match &gate {
+            // `--fail_on`: only these layers decide the exit code; the rest are still reported.
+            Some(layers) => r
+                .violations
+                .iter()
+                .filter(|d| d.severity != "warning" && layers.iter().any(|l| l == kind_of(&d.rule)))
+                .count(),
+            None => counts(r).0,
+        };
+        failed |= counted > 0 && !(args.stdin && args.fix);
         match args.output_format {
             OutputFormat::Vsg => vsg_report(&mut report, r, rules_checked),
             OutputFormat::Syntastic => syntastic_report(&mut report, r),

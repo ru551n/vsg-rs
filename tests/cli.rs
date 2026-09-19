@@ -297,6 +297,42 @@ fn lint_is_a_subcommand_and_the_root_stays_vsg() {
 }
 
 #[test]
+fn layers_can_be_gated_and_explained() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = write(
+        dir.path(),
+        "dut.vhd",
+        "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n\n  signal a, b, c : bit;\n\n\
+         begin\n\n  p : process (a, b) is\n  begin\n    if a = '1' then\n      c <= b;\n    \
+         end if;\n  end process p;\n\nend architecture rtl;\n",
+    );
+    let path = file.to_str().unwrap();
+    // The lint layer fails the run when gated on it, the style layer does not.
+    let on_lint = vsg(&["lint", path, "--fail_on", "lint"], "");
+    assert_eq!(on_lint.status.code(), Some(1));
+    let on_style = vsg(&["lint", path, "--fail_on", "style"], "");
+    assert_eq!(on_style.status.code(), Some(0), "no style findings to gate on");
+    // An unknown layer is refused rather than ignored.
+    let bad = vsg(&[path, "--fail_on", "nonsense"], "");
+    assert_eq!(bad.status.code(), Some(1));
+    // --statistics names the layer of each rule.
+    let stats = vsg(&["lint", path, "--statistics"], "");
+    let out = String::from_utf8_lossy(&stats.stdout);
+    assert!(out.contains("lint_600"), "{out}");
+    assert!(out.contains("lint"), "{out}");
+    // --explain describes a rule from either layer, and refuses an unknown one.
+    for rule in ["lint_600", "entity_019"] {
+        let explained = vsg(&["--explain", rule], "");
+        assert_eq!(explained.status.code(), Some(0), "{rule}");
+        assert!(
+            String::from_utf8_lossy(&explained.stdout).contains("Layer:"),
+            "{rule}"
+        );
+    }
+    assert_eq!(vsg(&["--explain", "nope_001"], "").status.code(), Some(1));
+}
+
+#[test]
 fn configuration_is_discovered_next_to_the_input() {
     let dir = tempfile::tempdir().expect("tempdir");
     write(
@@ -473,7 +509,7 @@ fn statistics_counts_violations_per_rule() {
         .find(|l| l.starts_with("entity_008"))
         .unwrap_or_else(|| panic!("{text}"));
     let fields: Vec<&str> = line.split_whitespace().collect();
-    assert_eq!(fields, ["entity_008", "2", "2", "yes"], "{text}");
+    assert_eq!(fields, ["entity_008", "2", "2", "style", "yes"], "{text}");
     assert!(text.contains("in 2 file(s)"), "{text}");
 }
 

@@ -254,6 +254,12 @@ pub fn vsg_catalog() -> impl Iterator<Item = (&'static str, Owner)> {
         .map(|id| (id, owner(id)))
 }
 
+/// Which part of vsg-rs owns a rule.
+#[must_use]
+pub fn owner_of(id: &str) -> Owner {
+    owner(id)
+}
+
 fn owner(id: &str) -> Owner {
     catalog::OWNERS
         .binary_search_by_key(&id, |(r, _)| r)

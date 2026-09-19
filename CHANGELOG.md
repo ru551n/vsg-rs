@@ -7,6 +7,12 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 
 **Targets VSG 3.35.**
 
+* Every finding carries its layer (`style`, `layout` or `lint`), derived from the rule id so it
+  cannot disagree with what produced it. `--statistics` shows it per rule and totals per layer,
+  and `--fail_on style,layout,lint` chooses which layers make the run fail while the rest are
+  still reported — so a team can gate CI on the lint layer while style only informs.
+* `--explain RULE` says what a rule checks, which layer runs it, whether it is fixed, and links
+  to VSG's documentation for VSG's own rules.
 * A second layer of rules (`docs/lint.md`). The root command stays VSG's — same arguments, same
   reports, byte-identical output — and `vsg-rs lint ...` runs rules that need names resolved,
   through `vhdl_lang`. `--check style,lint` runs both in one pass.

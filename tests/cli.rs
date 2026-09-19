@@ -311,7 +311,11 @@ fn layers_can_be_gated_and_explained() {
     let on_lint = vsg(&["lint", path, "--fail_on", "lint"], "");
     assert_eq!(on_lint.status.code(), Some(1));
     let on_style = vsg(&["lint", path, "--fail_on", "style"], "");
-    assert_eq!(on_style.status.code(), Some(0), "no style findings to gate on");
+    assert_eq!(
+        on_style.status.code(),
+        Some(0),
+        "no style findings to gate on"
+    );
     // An unknown layer is refused rather than ignored.
     let bad = vsg(&[path, "--fail_on", "nonsense"], "");
     assert_eq!(bad.status.code(), Some(1));

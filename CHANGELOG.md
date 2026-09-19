@@ -10,6 +10,8 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 * `lint_710` and `lint_711` read enumerated state machines out of the source and report a state
   nothing can enter and a state nothing can leave — the two checks a netlist is usually thought
   necessary for.
+* `lint_720` reports a combinational loop: a signal that depends on itself with no register in
+  the way. The cycle is found in the source, not in a netlist.
 * `lint_730` reports a signal that something reads but nothing drives — no assignment, and no
   instance output. It is the first check built on a design-wide view: the run now reads every
   input for its entities and port modes, so a port map can be read as drivers and readers.

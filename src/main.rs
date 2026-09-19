@@ -2,6 +2,7 @@
 
 use std::process::ExitCode;
 
+mod combinational;
 mod design;
 mod elaborate;
 mod fsm;

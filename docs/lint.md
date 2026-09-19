@@ -130,6 +130,18 @@ must be a plain value of the type, since a state computed by a function cannot b
 from syntax. A `case` that never assigns the state is a multiplexer selecting by state, not
 transition logic, and is not checked for exits.
 
+### Combinational loops
+
+`lint_720` builds the dependency graph of an architecture — every signal a combinational source
+reads, pointing at every signal it drives — and looks for a cycle. A process that is clocked or
+that waits contributes nothing, because the register or the wait is what breaks the loop.
+
+Edges belong to one assignment rather than to everything around it, so a generate block or a
+process does not make everything it reads feed everything it writes. Four things are left out so
+that a reported cycle is a real one: an assignment to part of an object (`q(0) <= q(1)` is two
+elements), anything through an instance (whose entity may register the path), an attribute of a
+signal (`q'length` is a property, not a value), and an assignment with an `after` delay.
+
 ### Wiring
 
 `lint_730` needs to know what an instance does to the signals connected to it, so the run first
@@ -179,6 +191,7 @@ none that were real.
 | `lint_601` | A signal is assigned by more than one concurrent statement |
 | `lint_710` | A state of an enumerated state machine is never entered |
 | `lint_711` | A state of an enumerated state machine has no exit |
+| `lint_720` | A signal depends on itself through combinational logic, with no register in the loop |
 | `lint_730` | A signal is read but nothing drives it: no assignment, and no instance output |
 
 ### Naming registers (off by default)

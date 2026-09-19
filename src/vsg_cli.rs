@@ -982,6 +982,7 @@ fn list_rules() -> ExitCode {
         .chain(crate::design::RULES.iter().copied())
         .chain(crate::elaborate::RULES.iter().copied())
         .chain(crate::fsm::RULES.iter().copied())
+        .chain(crate::combinational::RULES.iter().copied())
     {
         let _ = writeln!(out, "{id:42} lint (--check lint): {description}");
     }
@@ -1610,10 +1611,12 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             };
             let wiring = crate::elaborate::undriven(&parsed, file, &entities);
             let machines = crate::fsm::check(&parsed, file);
+            let loops = crate::combinational::check(&parsed, file);
             for f in crate::design::check(&parsed, file, &naming)
                 .into_iter()
                 .chain(wiring)
                 .chain(machines)
+                .chain(loops)
             {
                 let settings = cfg.rule_by_id(f.rule);
                 if settings.as_ref().is_some_and(|s| !s.enabled) {

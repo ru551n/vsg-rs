@@ -183,7 +183,7 @@ pub(crate) fn is_clocked(process: &SyntaxNode) -> bool {
 /// Whether a process describes something other than combinational logic, and so cannot infer a
 /// latch: a clocked process (an edge test, the shape `vhdl_lang` uses too), or one that suspends
 /// on `wait`, which is how testbenches are written and is not synthesisable logic at all.
-fn is_not_combinational(process: &SyntaxNode) -> bool {
+pub(crate) fn is_not_combinational(process: &SyntaxNode) -> bool {
     if !find(process, NodeKind::WaitStatement).is_empty() {
         return true;
     }

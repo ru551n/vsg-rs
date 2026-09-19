@@ -50,6 +50,24 @@ violation still fails the run, it just does not pretend to be technical debt.
 Columns are converted, because SonarQube counts them from zero and every other format here counts
 from one.
 
+## SARIF
+
+```sh
+vsg-rs --recursive src --check style,lint --sarif vsg-rs.sarif
+```
+
+Findings carry more than a position:
+
+* **`relatedLocations`** — the other places a finding is about. `lint_601` lists each driver of
+  the signal; `lint_720` lists each signal on the cycle. Code scanning links them, so a multiple
+  driver is two places you can click rather than two numbers in a sentence.
+* **`fixes`** — the edits of a safe fix, as regions and replacement text. Only fixes vsg-rs would
+  apply itself are offered, so a fix suggested in a review matches what `--fix` does. Fixes VSG
+  does not apply by default (`--unsafe_fixes`) are never emitted, and a lint finding never carries
+  one, because applying it would change what the design does.
+
+Each fix is independently applicable, as SARIF intends: applying one may leave others to report.
+
 ## Jenkins
 
 Use the SARIF file. The Warnings Next Generation plugin has a SARIF parser, so no vsg-rs-specific

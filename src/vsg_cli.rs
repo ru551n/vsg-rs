@@ -15,6 +15,17 @@ use vsg_rs::{FixOptions, FormatError, Parsed};
 
 use crate::local_rules::LocalRules;
 
+/// One edit of a safe fix, as positions rather than byte offsets, so a consumer that has only
+/// the report can apply it without reading the source again.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Replacement {
+    line: usize,
+    column: usize,
+    end_line: usize,
+    end_column: usize,
+    text: String,
+}
+
 /// One reported violation.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Diagnostic {
@@ -31,6 +42,9 @@ struct Diagnostic {
     /// The other places this finding is about; see `lint::Related`.
     #[serde(default)]
     related: Vec<crate::lint::Related>,
+    /// The edits of this finding's fix, when it has a safe one.
+    #[serde(default)]
+    fix: Vec<Replacement>,
 }
 
 /// Which layer a finding came from, derived from its rule id so that it cannot disagree with
@@ -57,18 +71,55 @@ fn wants(args: &Args, layer: &str) -> bool {
 
 fn diagnostic(parsed: &Parsed, v: &Violation) -> Diagnostic {
     let (line, column) = parsed.line_col(v.start);
+    // Only a fix vsg-rs would apply itself is offered; an unsafe one is a suggestion for a
+    // person, and the same rule governs --fix, so the two cannot disagree.
+    let safe = v
+        .fix
+        .as_ref()
+        .filter(|f| f.safety == rules::FixSafety::Safe);
     Diagnostic {
         line,
         column,
         rule: v.rule.to_owned(),
         severity: v.severity.to_string(),
         message: v.message.clone(),
-        fixable: v
-            .fix
-            .as_ref()
-            .is_some_and(|f| f.safety == rules::FixSafety::Safe),
+        fixable: safe.is_some(),
         // Style rules point at one place; the lint layer fills this in.
         related: Vec::new(),
+        // Positions are resolved here, while the source that produced the offsets is at hand.
+        fix: safe
+            .map(|f| {
+                // `--fix` applies edits in (start, rank, end) order, and two of them can insert
+                // at the same offset. A consumer sees positions only, so the order is applied
+                // here and same-offset insertions are merged into one replacement -- otherwise
+                // `end;` becomes `end e entity;` instead of `end entity e;`.
+                let mut edits: Vec<&rules::Edit> = f.edits.iter().collect();
+                edits.sort_by_key(|e| (e.start, e.rank, e.end));
+                let mut merged: Vec<rules::Edit> = Vec::new();
+                for edit in edits {
+                    match merged.last_mut() {
+                        Some(last) if last.start == edit.start && last.end == edit.end => {
+                            last.text.push_str(&edit.text);
+                        }
+                        _ => merged.push((*edit).clone()),
+                    }
+                }
+                merged
+                    .iter()
+                    .map(|e| {
+                        let (line, column) = parsed.line_col(e.start);
+                        let (end_line, end_column) = parsed.line_col(e.end);
+                        Replacement {
+                            line,
+                            column,
+                            end_line,
+                            end_column,
+                            text: e.text.clone(),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
     }
 }
 
@@ -111,6 +162,7 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
             message: vsg_rs::layout::message(&change, cfg.format.indent),
             fixable: true,
             related: Vec::new(),
+            fix: Vec::new(),
         });
     }
     if out.is_empty() {
@@ -123,6 +175,7 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
             message: "File is not formatted".into(),
             fixable: true,
             related: Vec::new(),
+            fix: Vec::new(),
         });
     }
     out
@@ -912,6 +965,14 @@ fn is_layout(rule: &str) -> bool {
 }
 
 /// One SARIF result.
+/// What a diagnostic adds to its SARIF result beyond the primary location. A reformat block
+/// stands for several findings and has neither.
+#[derive(Default)]
+struct SarifExtras<'a> {
+    related: &'a [crate::lint::Related],
+    fix: &'a [Replacement],
+}
+
 fn sarif_result(
     r: &FileResult,
     rule: &str,
@@ -919,8 +980,10 @@ fn sarif_result(
     message: &str,
     lines: (usize, usize),
     column: usize,
+    extras: &SarifExtras<'_>,
 ) -> serde_json::Value {
-    serde_json::json!({
+    let (related, fix) = (extras.related, extras.fix);
+    let mut result = serde_json::json!({
         "ruleId": rule,
         "level": level,
         "message": { "text": message },
@@ -934,7 +997,59 @@ fn sarif_result(
                 }
             }
         }]
-    })
+    });
+    let Some(object) = result.as_object_mut() else {
+        return result;
+    };
+    // The other places the finding is about. Code scanning links each one.
+    if !related.is_empty() {
+        let locations: Vec<serde_json::Value> = related
+            .iter()
+            .map(|other| {
+                serde_json::json!({
+                    "physicalLocation": {
+                        "artifactLocation": {
+                            "uri": sarif_uri(&other.file.display().to_string())
+                        },
+                        "region": {
+                            "startLine": other.line.max(1),
+                            "startColumn": other.column.max(1)
+                        }
+                    },
+                    "message": { "text": other.message }
+                })
+            })
+            .collect();
+        object.insert("relatedLocations".to_owned(), locations.into());
+    }
+    // Only fixes vsg-rs would apply itself, so what a consumer offers matches `--fix`.
+    if !fix.is_empty() {
+        let replacements: Vec<serde_json::Value> = fix
+            .iter()
+            .map(|edit| {
+                serde_json::json!({
+                    "deletedRegion": {
+                        "startLine": edit.line.max(1),
+                        "startColumn": edit.column.max(1),
+                        "endLine": edit.end_line.max(1),
+                        "endColumn": edit.end_column.max(1)
+                    },
+                    "insertedContent": { "text": edit.text }
+                })
+            })
+            .collect();
+        object.insert(
+            "fixes".to_owned(),
+            serde_json::json!([{
+                "description": { "text": format!("Apply the {rule} fix (vsg-rs --fix)") },
+                "artifactChanges": [{
+                    "artifactLocation": { "uri": sarif_uri(&r.name) },
+                    "replacements": replacements
+                }]
+            }]),
+        );
+    }
+    result
 }
 
 /// SARIF 2.1.0: one result per rule violation, and one `format` result per block of adjacent
@@ -964,7 +1079,16 @@ fn sarif_report(results: &[FileResult]) -> String {
                     )
                 };
                 let level = if error { "error" } else { "warning" };
-                findings.push(sarif_result(r, "format", level, &message, (first, last), 1));
+                // A reformat block stands for several findings; its fix is `--fix` on the file.
+                findings.push(sarif_result(
+                    r,
+                    "format",
+                    level,
+                    &message,
+                    (first, last),
+                    1,
+                    &SarifExtras::default(),
+                ));
             }
         };
         for d in by_line(r) {
@@ -982,6 +1106,10 @@ fn sarif_report(results: &[FileResult]) -> String {
                     &d.message,
                     (d.line, d.line),
                     d.column,
+                    &SarifExtras {
+                        related: &d.related,
+                        fix: &d.fix,
+                    },
                 ));
                 continue;
             }
@@ -1110,6 +1238,7 @@ fn directory_result(name: String) -> FileResult {
             message: "Is a directory".into(),
             fixable: false,
             related: Vec::new(),
+            fix: Vec::new(),
         }],
         error: None,
         output: None,
@@ -1232,6 +1361,7 @@ fn check_local_rules(
                 // A VSG rule plugin reports; vsg-rs does not know how to fix what it found.
                 fixable: false,
                 related: Vec::new(),
+                fix: Vec::new(),
             });
         }
     }
@@ -1433,6 +1563,7 @@ fn lint_files(
                             // A lint finding never carries a fix.
                             fixable: false,
                             related: f.related,
+                            fix: Vec::new(),
                         },
                     ))
                 })
@@ -1962,6 +2093,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                         message: f.message,
                         fixable: false,
                         related: f.related,
+                        fix: Vec::new(),
                     });
                 }
                 for r in &mut results {
@@ -2161,6 +2293,7 @@ mod tests {
                     message: "Add *entity* keyword".into(),
                     fixable: false,
                     related: Vec::new(),
+                    fix: Vec::new(),
                 })
                 .collect(),
             error: None,

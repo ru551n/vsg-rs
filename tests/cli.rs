@@ -249,6 +249,70 @@ fn extensions_diff_range_sarif_and_rule_list() {
 }
 
 #[test]
+fn sarif_carries_related_locations_and_safe_fixes() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // Two drivers of one signal: a finding about more than one place.
+    let file = write(
+        dir.path(),
+        "dut.vhd",
+        "entity dut is\n  port (\n    a : in  bit;\n    b : in  bit;\n    q : out bit\n  );\n\
+         end;\n\narchitecture rtl of dut is\n\nbegin\n\n  q <= a;\n  q <= b;\n\n\
+         end architecture rtl;\n",
+    );
+    let sarif = dir.path().join("out.sarif");
+    let out = vsg(
+        &[
+            file.to_str().unwrap(),
+            "--check",
+            "style,lint",
+            "--sarif",
+            sarif.to_str().unwrap(),
+        ],
+        "",
+    );
+    assert_eq!(out.status.code(), Some(1));
+    let doc: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&sarif).unwrap()).unwrap();
+    let results = doc["runs"][0]["results"].as_array().expect("results");
+
+    // The drivers are locations, not a sentence.
+    let drivers = results
+        .iter()
+        .find(|r| r["ruleId"] == "lint_601")
+        .expect("lint_601 reported");
+    let related = drivers["relatedLocations"]
+        .as_array()
+        .expect("relatedLocations");
+    assert_eq!(related.len(), 2, "{related:?}");
+    for one in related {
+        assert!(
+            one["physicalLocation"]["region"]["startLine"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 1
+        );
+        assert!(one["message"]["text"].as_str().is_some());
+    }
+
+    // A safe fix travels as an edit a consumer can apply, with a region and its text.
+    let fixed = results
+        .iter()
+        .find(|r| r.get("fixes").is_some())
+        .expect("some result carries a fix");
+    let replacement = &fixed["fixes"][0]["artifactChanges"][0]["replacements"][0];
+    assert!(
+        replacement["deletedRegion"]["startLine"]
+            .as_u64()
+            .unwrap_or(0)
+            >= 1
+    );
+    assert!(replacement["insertedContent"]["text"].as_str().is_some());
+
+    // A lint finding never carries one, because applying it would change the design.
+    assert!(drivers.get("fixes").is_none(), "{drivers:?}");
+}
+
+#[test]
 fn sonarqube_report_carries_the_layer_as_the_issue_type() {
     let dir = tempfile::tempdir().expect("tempdir");
     let file = write(

@@ -1227,6 +1227,9 @@ fn in_workers<T: serde::de::DeserializeOwned>(
 }
 
 /// Worker process: read a request from stdin, answer on stdout.
+/// What one file's lint pass produces: whether it is a testbench, and its findings.
+type PerFile = (Option<(PathBuf, &'static str)>, Vec<(PathBuf, Diagnostic)>);
+
 fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOptions) -> ExitCode {
     #[derive(serde::Deserialize)]
     struct Request {
@@ -1592,55 +1595,77 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             libraries: &cfg.testbench_libraries,
             of_file: &of_file,
         };
-        for file in &files {
-            // What is on disk now, so positions match the file after `--fix` wrote it.
-            let Ok(source) = std::fs::read(file) else {
-                continue;
-            };
-            let parsed = vsg_rs::Parsed::new(source);
-            if !parsed.syntax_errors().is_empty() {
-                continue;
+        // Testbench code gets the `testbench` rule block, hardware the `rtl` one. There are only
+        // ever those two, so they are resolved once rather than per file -- including the naming
+        // patterns (`lint_602`/`lint_603`), whose regular expressions are compiled here and
+        // whose errors are reported before any file is read.
+        let settings_for = |kind| {
+            let cfg = lint_cfg.for_kind(kind);
+            naming_rules(&cfg).map(|naming| (cfg, naming))
+        };
+        let (rtl, testbench) = match (settings_for("rtl"), settings_for("testbench")) {
+            (Ok(rtl), Ok(testbench)) => (rtl, testbench),
+            (Err(e), _) | (_, Err(e)) => {
+                eprintln!("ERROR: {e}");
+                return ExitCode::from(1);
             }
-            // Testbench code gets the `testbench` rule block, hardware the `rtl` one.
-            let reason = crate::testbench::classify(&parsed, file, &kind_sources);
-            if let Some(reason) = reason {
-                kinds.insert(file.clone(), reason);
+        };
+
+        // Each file is checked on its own, so they are checked in parallel. The findings are
+        // merged afterwards in the order the files were given, so a run is reproducible.
+        let per_file: Vec<PerFile> = files
+            .par_iter()
+            .map(|file| {
+                // What is on disk now, so positions match the file after `--fix` wrote it.
+                let Ok(source) = std::fs::read(file) else {
+                    return (None, Vec::new());
+                };
+                let parsed = vsg_rs::Parsed::new(source);
+                if !parsed.syntax_errors().is_empty() {
+                    return (None, Vec::new());
+                }
+                let reason = crate::testbench::classify(&parsed, file, &kind_sources);
+                let (cfg, naming) = if reason.is_some() { &testbench } else { &rtl };
+                let wiring = crate::elaborate::undriven(&parsed, file, &entities);
+                let machines = crate::fsm::check(&parsed, file);
+                let loops = crate::combinational::check(&parsed, file);
+                let crossings = crate::clockdomain::check(&parsed, file, &cfg.synchronizers);
+                let sizes = crate::width::check(&parsed, file);
+                let found = crate::design::check(&parsed, file, naming)
+                    .into_iter()
+                    .chain(wiring)
+                    .chain(machines)
+                    .chain(loops)
+                    .chain(crossings)
+                    .chain(sizes)
+                    .filter_map(|f| {
+                        let settings = cfg.rule_by_id(f.rule);
+                        if settings.as_ref().is_some_and(|s| !s.enabled) {
+                            return None;
+                        }
+                        Some((
+                            f.file,
+                            Diagnostic {
+                                line: f.line,
+                                column: f.column,
+                                rule: f.rule.to_owned(),
+                                severity: settings
+                                    .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
+                                message: f.message,
+                            },
+                        ))
+                    })
+                    .collect();
+                (reason.map(|reason| (file.clone(), reason)), found)
+            })
+            .collect();
+        for (kind, found) in per_file {
+            if let Some((file, reason)) = kind {
+                kinds.insert(file, reason);
             }
-            let cfg = lint_cfg.for_kind(if reason.is_some() { "testbench" } else { "rtl" });
-            // How this file's kind wants registers named (`lint_602`, off unless configured).
-            let naming = match naming_rules(&cfg) {
-                Ok(naming) => naming,
-                Err(e) => {
-                    eprintln!("ERROR: {e}");
-                    return ExitCode::from(1);
-                }
-            };
-            let wiring = crate::elaborate::undriven(&parsed, file, &entities);
-            let machines = crate::fsm::check(&parsed, file);
-            let loops = crate::combinational::check(&parsed, file);
-            let crossings = crate::clockdomain::check(&parsed, file, &cfg.synchronizers);
-            let sizes = crate::width::check(&parsed, file);
-            for f in crate::design::check(&parsed, file, &naming)
-                .into_iter()
-                .chain(wiring)
-                .chain(machines)
-                .chain(loops)
-                .chain(crossings)
-                .chain(sizes)
-            {
-                let settings = cfg.rule_by_id(f.rule);
-                if settings.as_ref().is_some_and(|s| !s.enabled) {
-                    continue;
-                }
-                if let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == f.file) {
-                    r.violations.push(Diagnostic {
-                        line: f.line,
-                        column: f.column,
-                        rule: f.rule.to_owned(),
-                        severity: settings
-                            .map_or_else(|| "error".to_owned(), |s| s.severity.to_string()),
-                        message: f.message,
-                    });
+            for (file, diagnostic) in found {
+                if let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == file) {
+                    r.violations.push(diagnostic);
                 }
             }
         }

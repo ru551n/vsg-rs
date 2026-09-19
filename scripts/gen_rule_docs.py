@@ -89,6 +89,91 @@ def counts(rules: list[tuple[str, str, str]]) -> dict[str, int]:
     }
 
 
+def cli_reference() -> str:
+    """The CLI page, from the binary's own --help, so the two cannot drift."""
+    binary = ROOT / "target" / "release" / "vsg-rs"
+    help_text = subprocess.run(
+        [str(binary), "--help"], cwd=ROOT, check=True, capture_output=True, text=True
+    ).stdout
+    # clap prints `      --flag <VALUE>` then an indented description on the following lines.
+    options: list[tuple[str, str]] = []
+    flag = None
+    description: list[str] = []
+    for line in help_text.splitlines():
+        if re.match(r"^  {0,2}-|^      --", line):
+            if flag:
+                options.append((flag, " ".join(description).strip()))
+            flag, description = line.strip(), []
+        elif line.startswith("          ") and flag:
+            description.append(line.strip())
+    if flag:
+        options.append((flag, " ".join(description).strip()))
+
+    vsg = [(f, d) for f, d in options if "(vsg-rs extension)" not in d]
+    ours = [(f, d.replace(" (vsg-rs extension)", "")) for f, d in options if "(vsg-rs extension)" in d]
+
+    def table(rows: list[tuple[str, str]]) -> list[str]:
+        out = ["| Option | Meaning |", "|---|---|"]
+        out += [f"| `{f}` | {d} |" for f, d in rows]
+        return out + [""]
+
+    return "\n".join(
+        [
+            GENERATED,
+            "",
+            "# CLI reference",
+            "",
+            "Generated from `vsg-rs --help`, so this page cannot drift from the binary.",
+            "",
+            "```text",
+            "vsg-rs [OPTIONS] [FILENAME]...",
+            "vsg-rs lint [OPTIONS] [FILENAME]...",
+            "```",
+            "",
+            "`lint` is a subcommand only when it is the first argument and no file or directory of",
+            "that name exists. Every VSG command line therefore keeps working unchanged; underneath,",
+            "`lint` means `--check lint`.",
+            "",
+            "## VSG-compatible options",
+            "",
+            "These behave as VSG's do, and",
+            "[VSG documents them](https://vhdl-style-guide.readthedocs.io/en/latest/usage.html).",
+            "",
+            *table(vsg),
+            "## Options vsg-rs adds",
+            "",
+            *table(ours),
+            "## Exit codes",
+            "",
+            "| Code | Meaning |",
+            "|---|---|",
+            "| 0 | nothing of error severity was reported |",
+            "| 1 | an error-severity violation, a missing input file, or an invalid argument |",
+            "",
+            "Warnings alone do not fail a run. `--fail_on` narrows which layers count towards the",
+            "exit code; waived violations never do.",
+            "",
+            "## Which files are checked",
+            "",
+            "Files are taken from `-f/--filename` and from positional arguments. `--recursive` adds",
+            "the `.vhd` and `.vhdl` files in any directory given. `--stdin` reads one file from",
+            "standard input and disables file selection; `--stdin_filename` gives that input a path",
+            "for configuration lookup and reports.",
+            "",
+            "## Where configuration comes from",
+            "",
+            "1. `-c/--configuration`, merged in the order given.",
+            "2. Otherwise `vsg-rs.yaml`, `.vsg-rs.yaml`, `vsg-rs.json` or `.vsg-rs.json`, searched",
+            "   from the file's own directory upwards.",
+            "3. `--lint_configuration` is merged on top for the lint layer only.",
+            "",
+            "The library map (`vhdl_ls.toml`) is read from the working directory; see",
+            "[project setup](project-setup.md).",
+            "",
+        ]
+    )
+
+
 def rule_reference(rules: list[tuple[str, str, str]]) -> str:
     lint = {rule: description for rule, layer, description in rules if layer == "lint"}
     named = {rule for _, _, group in CATEGORIES for rule in group}
@@ -111,7 +196,12 @@ def rule_reference(rules: list[tuple[str, str, str]]) -> str:
         if not chosen:
             continue
         out += [f"## {title}", "", blurb, "", "| Rule | Reports |", "|---|---|"]
-        out += [f"| `{rule}` | {lint[rule]} |" for rule in chosen]
+        out += [
+            f"| [`{rule}`](native-rules.md#{rule}) | {lint[rule]} |"
+            if rule in named
+            else f"| `{rule}` | {lint[rule]} |"
+            for rule in chosen
+        ]
         out += [""]
     return "\n".join(out)
 
@@ -146,6 +236,7 @@ def main() -> int:
     pages = {
         DOCS / "rule-reference.md": rule_reference(rules),
         DOCS / "rule-counts.md": counts_page(rules),
+        DOCS / "cli.md": cli_reference(),
     }
     stale = [p for p, text in pages.items() if not p.exists() or p.read_text() != text]
     if args.check:

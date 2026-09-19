@@ -75,12 +75,12 @@ Reported by vsg-rs from the syntax tree plus the design's port connections. The 
 
 | Rule | Reports |
 |---|---|
-| `lint_601` | A signal is assigned by more than one concurrent statement. |
-| `lint_710` | A state of an enumerated state machine is never entered. |
-| `lint_711` | A state of an enumerated state machine has no exit. |
-| `lint_720` | A signal depends on itself through combinational logic, with no register in the loop. |
-| `lint_730` | A signal is read but nothing drives it: no assignment, and no instance output. |
-| `lint_740` | A vector is assigned to one of a different width. |
+| [`lint_601`](native-rules.md#lint_601) | A signal is assigned by more than one concurrent statement. |
+| [`lint_710`](native-rules.md#lint_710) | A state of an enumerated state machine is never entered. |
+| [`lint_711`](native-rules.md#lint_711) | A state of an enumerated state machine has no exit. |
+| [`lint_720`](native-rules.md#lint_720) | A signal depends on itself through combinational logic, with no register in the loop. |
+| [`lint_730`](native-rules.md#lint_730) | A signal is read but nothing drives it: no assignment, and no instance output. |
+| [`lint_740`](native-rules.md#lint_740) | A vector is assigned to one of a different width. |
 
 ## Heuristic
 
@@ -88,8 +88,8 @@ These infer design intent that the source does not state outright. They are writ
 
 | Rule | Reports |
 |---|---|
-| `lint_600` | A combinational process does not assign a signal on every path, inferring a latch. |
-| `lint_700` | A signal registered on one clock is used in logic on another, without a synchroniser. |
+| [`lint_600`](native-rules.md#lint_600) | A combinational process does not assign a signal on every path, inferring a latch. |
+| [`lint_700`](native-rules.md#lint_700) | A signal registered on one clock is used in logic on another, without a synchroniser. |
 
 ## Style policy
 
@@ -97,5 +97,5 @@ Naming conventions rather than analysis: they report nothing about whether the d
 
 | Rule | Reports |
 |---|---|
-| `lint_602` | A signal assigned by a clocked process does not have a register suffix (off by default; set `suffixes`). |
-| `lint_603` | A signal assigned by a clocked process does not have a register prefix (off by default; set `prefixes`). |
+| [`lint_602`](native-rules.md#lint_602) | A signal assigned by a clocked process does not have a register suffix (off by default; set `suffixes`). |
+| [`lint_603`](native-rules.md#lint_603) | A signal assigned by a clocked process does not have a register prefix (off by default; set `prefixes`). |

@@ -91,3 +91,4 @@ There is a [GitHub Action](github-action.md) and a [GitLab](gitlab-ci.md) recipe
 * [Formatting](formatting.md) for what the formatter decides and how to configure it
 * [Static analysis](lint.md) for what the lint layer reports and how far to trust it
 * [Editors](editors.md) for format-on-save
+* [CLI reference](cli.md) for every option and the exit codes

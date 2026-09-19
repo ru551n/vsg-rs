@@ -43,9 +43,10 @@ vsg-rs --recursive src --check style,lint  # both
 | format code, or format on save | [Formatting](formatting.md), [Editors](editors.md) |
 | find real bugs, not layout | [Static analysis](lint.md) |
 | understand why a rule reported nothing | [Project setup](project-setup.md) |
-| look up what `lint_600` means | [Rule reference](rule-reference.md) |
+| look up what `lint_600` means | [Native rules](native-rules.md), [rule reference](rule-reference.md) |
 | run it in CI | [GitHub](github-action.md), [GitLab](gitlab-ci.md), [Report formats](reports.md) |
 | accept violations in existing code | [Waivers](waivers.md) |
+| know what an option does | [CLI reference](cli.md) |
 | know how it works inside | [Architecture](architecture.md) |
 
 ## What it is not

@@ -140,5 +140,7 @@ exists today, so only new findings are reported from then on.
 
 * [Project setup](project-setup.md) — the library map, and which rules need it
 * [Rule reference](rule-reference.md) — every rule and its evidence
+* [Native rules in detail](native-rules.md) — worked examples for the ten vsg-rs implements
+* [CLI reference](cli.md) — every option, generated from the binary
 * [Waivers](waivers.md) — accepting known findings
 * [Report formats](reports.md) — getting findings into CI

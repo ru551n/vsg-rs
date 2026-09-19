@@ -45,6 +45,7 @@ nav:
       - Overview: lint.md
       - Project setup: project-setup.md
       - Rule reference: rule-reference.md
+      - Native rules in detail: native-rules.md
       - Waivers: waivers.md
   - CI and automation:
       - GitHub Action: github-action.md
@@ -53,9 +54,10 @@ nav:
   - VSG compatibility:
       - Measured compatibility: compatibility.md
       - Rule status: rule-status.md
-      - VSG configuration model: vsg-config.md
   - Reference:
+      - CLI reference: cli.md
       - Rule counts: rule-counts.md
+      - VSG configuration model: vsg-config.md
   - Developer documentation:
       - Architecture: architecture.md
       - VHDL frontend: vhdl-frontend.md

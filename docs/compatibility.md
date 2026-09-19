@@ -149,6 +149,29 @@ unchanged. Two are non-UTF-8 charset fixtures, one uses PSL written as code.
 The gaps are in the parser (`vhdl_syntax`), not in the rules; a file that does not parse is
 never modified.
 
+## The configured-project benchmark
+
+VUnit measures how the rules are written; a heavily configured project measures how well the
+configuration is honoured, which is a different thing. [open-logic](https://github.com/open-logic/open-logic)
+configures **825 rules** across 4,500 lines, and the weekly job now compares against it too.
+
+Two findings from the first run are worth recording:
+
+* **A configuration written for VSG 3.2x does not load in 3.35 at all.** open-logic pins
+  `vsg==3.27`; VSG 3.35 rejects their file because it names nine rules that were since renamed or
+  merged (`generic_017`, `ieee_500` and `port_018` all became `type_mark_500`, and so on).
+  `scripts/migrate_vsg_config.py` rewrites those names, and is useful to any project upgrading.
+  Once migrated, **VSG 3.35 itself reports 1,986 violations** on code that VSG 3.27 passes, so
+  the version step is a real event independent of vsg-rs.
+* **vsg-rs reported 10,134 against those 1,986**, and the difference was almost entirely
+  configuration that vsg-rs did not honour. Implementing `compact_alignment` and the `:=`
+  alignment of interface lists brought it to 5,824.
+
+What still differs, in order: indentation (`indent.tokens` settings vsg-rs does not implement),
+`port_map_300` and `generic_map_300`, `procedure_509`, `whitespace_008` and `block_comment_003`.
+The gap is a number that should keep falling; it is not a reason to prefer one tool over the
+other on a project whose configuration both tools honour.
+
 ## Known gaps
 
 See `rule-status.md` for rule coverage. Not supported: `indent.tokens` settings that are not about construct-level indentation (see `formatting.md`).

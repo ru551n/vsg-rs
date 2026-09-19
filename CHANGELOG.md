@@ -1,6 +1,46 @@
 # Changelog
 
+Every release says which version of VSG it targets: the rule set, the configuration and the
+reports are that version's. `vsg-rs --version` prints the same thing.
+
+## Unreleased
+
+**Targets VSG 3.35.**
+
+* A second layer of rules (`docs/lint.md`). The root command stays VSG's — same arguments, same
+  reports, byte-identical output — and `vsg-rs lint ...` runs rules that need names resolved,
+  through `vhdl_lang`. `--check style,lint` runs both in one pass.
+* 58 lint rules: sensitivity lists, unused declarations, and the name, type, subprogram and
+  association diagnostics `vhdl_lang` produces, each with an id and a description in
+  `--list_rules`.
+* Three checks of our own: `lint_600` infers a latch when a combinational process does not
+  assign a signal on every path (variables included, when one is read before it is written),
+  `lint_601` reports a signal driven by more than one concurrent statement, and `lint_602` and
+  `lint_603` check that a registered signal carries a suffix or prefix (both off by default,
+  with plain, glob or regular-expression patterns).
+* `ieee` and `std` are embedded in the binary, so the lint layer resolves them with no simulator
+  and no configuration. `NOTICE` credits the IEEE P1076 WG and rust_hdl sources.
+* Rules that need cross-file resolution wait for a `vhdl_ls.toml`, because unresolved names make
+  them meaningless. A lint run without one says how many rules did not run, every time.
+* Testbench and RTL code can carry different lint rules: `vsg_rs: testbench_files` (globs) or
+  `vsg_rs: testbench_libraries` (from `vhdl_ls.toml`) name the testbenches, and
+  `vsg_rs: testbench: rule:` / `vsg_rs: rtl: rule:` hold a rule block each. Without either, a
+  file is classified by its own shape, and `--debug` says which files and why.
+* `--lint_configuration` (`-lc`) takes configuration files applied to the lint layer only.
+* `compact_alignment` is implemented. With it (VSG's default) an aligned column is the narrowest
+  that fits; without it a group that already agrees on a wider column keeps it.
+* The `:=` of generic and port clauses is aligned after the type, as VSG does (`entity_018`); it
+  was previously collapsed to one space.
+* `scripts/migrate_vsg_config.py` rewrites a VSG 3.2x configuration to the rule names 3.35 uses.
+* The documentation is published at <https://vsg-rs.readthedocs.io/>. It covers what vsg-rs adds
+  on top of VSG; the rules, their options and the configuration file are VSG's and are linked to
+  rather than repeated, so the two cannot drift apart.
+* The weekly compatibility job gains open-logic (825 configured rules) as a second corpus and a
+  third comparison against whatever VSG released most recently.
+
 ## 0.11.0
+
+**Targets VSG 3.35.**
 
 * Waivers (`docs/waivers.md`): `--waivers FILE` accepts the violations a project has decided to
   live with, listed by rule, file glob, lines and reason. `--generate_waivers FILE` writes a

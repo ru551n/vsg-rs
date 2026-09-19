@@ -118,6 +118,15 @@ directories (`tb_`, `_tb`, `test/`, `sim/`, `bench/`, ...). Over three corpora t
 `--debug` prints every file treated as a testbench and which of those signals matched, so the
 classification is never silent.
 
+### Wiring
+
+`lint_730` needs to know what an instance does to the signals connected to it, so the run first
+reads every input for its entities and port modes. A port map is then read as "these signals are
+driven, those are read". Nothing is assumed: an instance of an entity the run cannot see marks
+everything it touches as driven, a procedure call marks every name it mentions as driven (a
+procedure can have `out` parameters and vsg-rs does not resolve signatures), and a signal with an
+initial value is treated as tied on purpose rather than undriven.
+
 ## Telling it where your libraries are
 
 Everything past the first few rules needs to resolve names across files, and that needs a library
@@ -156,6 +165,7 @@ none that were real.
 | `lint_003` | An item that may not appear in a sensitivity list |
 | `lint_600` | A combinational process does not assign a signal on every path: a latch |
 | `lint_601` | A signal is assigned by more than one concurrent statement |
+| `lint_730` | A signal is read but nothing drives it: no assignment, and no instance output |
 
 ### Naming registers (off by default)
 

@@ -7,6 +7,9 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 
 **Targets VSG 3.35.**
 
+* `lint_730` reports a signal that something reads but nothing drives — no assignment, and no
+  instance output. It is the first check built on a design-wide view: the run now reads every
+  input for its entities and port modes, so a port map can be read as drivers and readers.
 * Every finding carries its layer (`style`, `layout` or `lint`), derived from the rule id so it
   cannot disagree with what produced it. `--statistics` shows it per rule and totals per layer,
   and `--fail_on style,layout,lint` chooses which layers make the run fail while the rest are

@@ -3,6 +3,7 @@
 use std::process::ExitCode;
 
 mod design;
+mod elaborate;
 mod lint;
 mod local_rules;
 mod testbench;

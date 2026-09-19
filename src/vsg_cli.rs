@@ -978,7 +978,10 @@ fn list_rules() -> ExitCode {
         };
         let _ = writeln!(out, "{id:42} {status}");
     }
-    for (id, description) in crate::lint::rules().chain(crate::design::RULES.iter().copied()) {
+    for (id, description) in crate::lint::rules()
+        .chain(crate::design::RULES.iter().copied())
+        .chain(crate::elaborate::RULES.iter().copied())
+    {
         let _ = writeln!(out, "{id:42} lint (--check lint): {description}");
     }
     ExitCode::SUCCESS
@@ -1566,6 +1569,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     if lint && !args.stdin {
         // Design checks on our own tree: they need no resolution, so they run per file and
         // survive a file the analyser cannot parse.
+        // What every entity's ports do, so a port map can be read as drivers and readers.
+        let entities = crate::elaborate::entities(&files);
         let mut kinds: std::collections::BTreeMap<PathBuf, &'static str> =
             std::collections::BTreeMap::new();
         // Which library each file is in, so `testbench_libraries` can name the test ones.
@@ -1602,7 +1607,11 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                     return ExitCode::from(1);
                 }
             };
-            for f in crate::design::check(&parsed, file, &naming) {
+            let wiring = crate::elaborate::undriven(&parsed, file, &entities);
+            for f in crate::design::check(&parsed, file, &naming)
+                .into_iter()
+                .chain(wiring)
+            {
                 let settings = cfg.rule_by_id(f.rule);
                 if settings.as_ref().is_some_and(|s| !s.enabled) {
                     continue;

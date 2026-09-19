@@ -26,7 +26,7 @@ fn descendants(node: &SyntaxNode, kind: NodeKind, out: &mut Vec<SyntaxNode>) {
     }
 }
 
-fn find(node: &SyntaxNode, kind: NodeKind) -> Vec<SyntaxNode> {
+pub(crate) fn find(node: &SyntaxNode, kind: NodeKind) -> Vec<SyntaxNode> {
     let mut out = Vec::new();
     descendants(node, kind, &mut out);
     out
@@ -43,7 +43,7 @@ fn tokens(node: &SyntaxNode, out: &mut Vec<vhdl_syntax::syntax::SyntaxToken>) {
     }
 }
 
-fn all_tokens(node: &SyntaxNode) -> Vec<vhdl_syntax::syntax::SyntaxToken> {
+pub(crate) fn all_tokens(node: &SyntaxNode) -> Vec<vhdl_syntax::syntax::SyntaxToken> {
     let mut out = Vec::new();
     tokens(node, &mut out);
     out
@@ -51,7 +51,7 @@ fn all_tokens(node: &SyntaxNode) -> Vec<vhdl_syntax::syntax::SyntaxToken> {
 
 /// The text of a node, lowercased, with the trivia dropped: enough to compare two assignment
 /// targets without resolving either.
-fn text_of(node: &SyntaxNode) -> String {
+pub(crate) fn text_of(node: &SyntaxNode) -> String {
     all_tokens(node)
         .iter()
         .map(|t| String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase())
@@ -90,7 +90,7 @@ const ASSIGNMENTS: &[NodeKind] = &[
 ];
 
 /// Every signal assignment in a node, the node itself included, as (signal, offset).
-fn assignments(node: &SyntaxNode) -> Vec<(String, usize)> {
+pub(crate) fn assignments(node: &SyntaxNode) -> Vec<(String, usize)> {
     let mut out = Vec::new();
     if ASSIGNMENTS.contains(&node.kind()) {
         out.extend(target(node));
@@ -310,7 +310,7 @@ fn declared_variables(process: &SyntaxNode) -> BTreeSet<String> {
 }
 
 /// The names a statement reads, which is everything it names except the targets it assigns.
-fn reads(node: &SyntaxNode, out: &mut Vec<(String, usize)>) {
+pub(crate) fn reads(node: &SyntaxNode, out: &mut Vec<(String, usize)>) {
     let assignment =
         ASSIGNMENTS.contains(&node.kind()) || VARIABLE_ASSIGNMENTS.contains(&node.kind());
     for child in node.children() {
@@ -392,13 +392,13 @@ fn latches(process: &SyntaxNode) -> Vec<(String, usize)> {
 
 /// One step of an assignment target: `.field`, or `(index)` with one entry per dimension.
 #[derive(Clone, PartialEq, Eq, Debug)]
-enum Selector {
+pub(crate) enum Selector {
     Field(String),
     Index(Vec<String>),
 }
 
 /// Split `rec.arr(3)(1, 2).f` into its base name and the steps that follow it.
-fn path(target: &str) -> (String, Vec<Selector>) {
+pub(crate) fn path(target: &str) -> (String, Vec<Selector>) {
     let mut base = String::new();
     let mut selectors: Vec<Selector> = Vec::new();
     let mut rest = target;

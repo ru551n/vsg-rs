@@ -14,25 +14,25 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
-use vsg_rs::Parsed;
 
-use crate::design::{all_tokens, assignments, find, path, reads, text_of};
-use crate::lint::Finding;
+use super::design::{all_tokens, assignments, find, path, reads, text_of};
+use super::lint::Finding;
 
 /// The ports of one entity, by what they do to a signal connected to them.
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Ports {
+pub struct Ports {
     /// Ports that drive their actual: `out`, `inout`, `buffer`.
-    pub(crate) driving: BTreeSet<String>,
+    pub driving: BTreeSet<String>,
     /// Ports that read their actual: `in`, `inout`.
-    pub(crate) reading: BTreeSet<String>,
+    pub reading: BTreeSet<String>,
     /// Declaration order, for positional association.
-    pub(crate) order: Vec<String>,
+    pub order: Vec<String>,
 }
 
 /// Every entity the run can see, by lower-case name.
-pub(crate) type Entities = BTreeMap<String, Ports>;
+pub type Entities = BTreeMap<String, Ports>;
 
 fn lower(text: &str) -> String {
     text.trim().to_ascii_lowercase()
@@ -69,7 +69,7 @@ fn ports_of(node: &SyntaxNode) -> Ports {
 
 /// Read every input once and keep only what a port map needs: entity names and port modes. The
 /// syntax trees are dropped again, so this costs a parse rather than the memory of the design.
-pub(crate) fn entities(files: &[PathBuf]) -> Entities {
+pub fn entities(files: &[PathBuf]) -> Entities {
     let mut out = Entities::new();
     for file in files {
         let Ok(source) = std::fs::read(file) else {
@@ -154,7 +154,7 @@ fn instantiations(architecture: &SyntaxNode) -> Vec<Instance> {
 /// nearly always a wiring mistake. A signal connected to an instance whose entity the run cannot
 /// see is left alone: without the port modes there is no telling a driver from a reader, and
 /// guessing would accuse correct code.
-pub(crate) fn undriven(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec<Finding> {
+pub fn undriven(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec<Finding> {
     let mut findings = Vec::new();
     for architecture in find(parsed.root(), NodeKind::ArchitectureBody) {
         let mut declared: BTreeMap<String, usize> = BTreeMap::new();
@@ -256,7 +256,7 @@ pub(crate) fn undriven(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub(crate) const RULES: &[(&str, &str)] = &[(
+pub const RULES: &[(&str, &str)] = &[(
     "lint_730",
     "A signal is read but nothing drives it: no assignment, and no instance output.",
 )];

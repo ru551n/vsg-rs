@@ -17,14 +17,14 @@
 
 use std::path::Path;
 
+use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
-use vsg_rs::Parsed;
 
 /// Match a path against one `testbench_files` pattern. A pattern with no `/` is about the file
 /// name wherever it lives (`tb_*.vhd`), one with a `/` is about the path (`test/**`, and a
 /// relative pattern also matches deeper, so `test/**` covers `modules/fifo/test/tb.vhd`).
 fn matches(pattern: &str, path: &str) -> bool {
-    let glob = |p: &str, t: &str| vsg_rs::config::glob(p.as_bytes(), t.as_bytes());
+    let glob = |p: &str, t: &str| crate::config::glob(p.as_bytes(), t.as_bytes());
     if !pattern.contains('/') {
         let name = path.rsplit('/').next().unwrap_or(path);
         return glob(pattern, name);
@@ -82,17 +82,17 @@ fn has_an_entity_without_ports(root: &SyntaxNode) -> bool {
 }
 
 /// What the run knows about which files are testbenches.
-pub(crate) struct Kinds<'a> {
+pub struct Kinds<'a> {
     /// `vsg_rs: testbench_files`.
-    pub(crate) patterns: &'a [String],
+    pub patterns: &'a [String],
     /// `vsg_rs: testbench_libraries`, lowercased.
-    pub(crate) libraries: &'a [String],
+    pub libraries: &'a [String],
     /// The libraries each file belongs to, from `vhdl_ls.toml`.
-    pub(crate) of_file: &'a std::collections::BTreeMap<std::path::PathBuf, Vec<String>>,
+    pub of_file: &'a std::collections::BTreeMap<std::path::PathBuf, Vec<String>>,
 }
 
 /// Why a file was treated as a testbench, or `None` when it is synthesisable code.
-pub(crate) fn classify(parsed: &Parsed, path: &Path, kinds: &Kinds<'_>) -> Option<&'static str> {
+pub fn classify(parsed: &Parsed, path: &Path, kinds: &Kinds<'_>) -> Option<&'static str> {
     let name = path.to_string_lossy().replace('\\', "/");
     let name = name.trim_start_matches("./").to_owned();
     if kinds.patterns.iter().any(|pattern| matches(pattern, &name)) {

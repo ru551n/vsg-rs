@@ -12,10 +12,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
-use vsg_rs::Parsed;
 
-use crate::lint::Finding;
+use super::lint::Finding;
 
 fn descendants(node: &SyntaxNode, kind: NodeKind, out: &mut Vec<SyntaxNode>) {
     for child in node.children() {
@@ -26,7 +26,7 @@ fn descendants(node: &SyntaxNode, kind: NodeKind, out: &mut Vec<SyntaxNode>) {
     }
 }
 
-pub(crate) fn find(node: &SyntaxNode, kind: NodeKind) -> Vec<SyntaxNode> {
+pub fn find(node: &SyntaxNode, kind: NodeKind) -> Vec<SyntaxNode> {
     let mut out = Vec::new();
     descendants(node, kind, &mut out);
     out
@@ -43,7 +43,7 @@ fn tokens(node: &SyntaxNode, out: &mut Vec<vhdl_syntax::syntax::SyntaxToken>) {
     }
 }
 
-pub(crate) fn all_tokens(node: &SyntaxNode) -> Vec<vhdl_syntax::syntax::SyntaxToken> {
+pub fn all_tokens(node: &SyntaxNode) -> Vec<vhdl_syntax::syntax::SyntaxToken> {
     let mut out = Vec::new();
     tokens(node, &mut out);
     out
@@ -51,7 +51,7 @@ pub(crate) fn all_tokens(node: &SyntaxNode) -> Vec<vhdl_syntax::syntax::SyntaxTo
 
 /// The text of a node, lowercased, with the trivia dropped: enough to compare two assignment
 /// targets without resolving either.
-pub(crate) fn text_of(node: &SyntaxNode) -> String {
+pub fn text_of(node: &SyntaxNode) -> String {
     all_tokens(node)
         .iter()
         .map(|t| String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase())
@@ -90,7 +90,7 @@ const ASSIGNMENTS: &[NodeKind] = &[
 ];
 
 /// Every signal assignment in a node, the node itself included, as (signal, offset).
-pub(crate) fn assignments(node: &SyntaxNode) -> Vec<(String, usize)> {
+pub fn assignments(node: &SyntaxNode) -> Vec<(String, usize)> {
     let mut out = Vec::new();
     if ASSIGNMENTS.contains(&node.kind()) {
         out.extend(target(node));
@@ -106,13 +106,13 @@ pub(crate) fn assignments(node: &SyntaxNode) -> Vec<(String, usize)> {
 /// One accepted prefix or suffix. Plain text matches itself; `*` and `?` are wildcards, so
 /// `_p?` accepts `_p1` through `_p9`; and `re:` takes a regular expression for anything finer,
 /// such as `re:_p[0-9]+`.
-pub(crate) struct Affix {
+pub struct Affix {
     text: String,
     pattern: Option<regex::Regex>,
 }
 
 impl Affix {
-    pub(crate) fn new(text: &str) -> Result<Affix, String> {
+    pub fn new(text: &str) -> Result<Affix, String> {
         let pattern = match text.strip_prefix("re:") {
             Some(expression) => Some(
                 regex::Regex::new(expression)
@@ -142,17 +142,17 @@ impl Affix {
         } else {
             format!("*{}", self.text)
         };
-        vsg_rs::config::glob(glob.as_bytes(), name.as_bytes())
+        crate::config::glob(glob.as_bytes(), name.as_bytes())
     }
 }
 
 /// How registered signals are expected to be named: `lint_602` for the suffix and `lint_603` for
 /// the prefix, each off unless its list is set, so a project can ask for either or both.
-pub(crate) struct Naming {
+pub struct Naming {
     /// `lint_603`.
-    pub(crate) prefixes: Vec<Affix>,
+    pub prefixes: Vec<Affix>,
     /// `lint_602`.
-    pub(crate) suffixes: Vec<Affix>,
+    pub suffixes: Vec<Affix>,
 }
 
 impl Naming {
@@ -175,7 +175,7 @@ impl Naming {
 }
 
 /// Whether a process is clocked: it tests a clock edge, so what it assigns becomes a register.
-pub(crate) fn is_clocked(process: &SyntaxNode) -> bool {
+pub fn is_clocked(process: &SyntaxNode) -> bool {
     let text = text_of(process);
     text.contains("rising_edge(") || text.contains("falling_edge(") || text.contains("'event")
 }
@@ -183,7 +183,7 @@ pub(crate) fn is_clocked(process: &SyntaxNode) -> bool {
 /// Whether a process describes something other than combinational logic, and so cannot infer a
 /// latch: a clocked process (an edge test, the shape `vhdl_lang` uses too), or one that suspends
 /// on `wait`, which is how testbenches are written and is not synthesisable logic at all.
-pub(crate) fn is_not_combinational(process: &SyntaxNode) -> bool {
+pub fn is_not_combinational(process: &SyntaxNode) -> bool {
     if !find(process, NodeKind::WaitStatement).is_empty() {
         return true;
     }
@@ -310,7 +310,7 @@ fn declared_variables(process: &SyntaxNode) -> BTreeSet<String> {
 }
 
 /// The names a statement reads, which is everything it names except the targets it assigns.
-pub(crate) fn reads(node: &SyntaxNode, out: &mut Vec<(String, usize)>) {
+pub fn reads(node: &SyntaxNode, out: &mut Vec<(String, usize)>) {
     let assignment =
         ASSIGNMENTS.contains(&node.kind()) || VARIABLE_ASSIGNMENTS.contains(&node.kind());
     for child in node.children() {
@@ -392,13 +392,13 @@ fn latches(process: &SyntaxNode) -> Vec<(String, usize)> {
 
 /// One step of an assignment target: `.field`, or `(index)` with one entry per dimension.
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum Selector {
+pub enum Selector {
     Field(String),
     Index(Vec<String>),
 }
 
 /// Split `rec.arr(3)(1, 2).f` into its base name and the steps that follow it.
-pub(crate) fn path(target: &str) -> (String, Vec<Selector>) {
+pub fn path(target: &str) -> (String, Vec<Selector>) {
     let mut base = String::new();
     let mut selectors: Vec<Selector> = Vec::new();
     let mut rest = target;
@@ -503,7 +503,7 @@ fn targets_overlap(left: &str, right: &str) -> bool {
     true
 }
 
-pub(crate) fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) -> Vec<Finding> {
+pub fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) -> Vec<Finding> {
     let mut findings = Vec::new();
     let at = |offset: usize| parsed.line_col(offset);
 
@@ -585,7 +585,7 @@ pub(crate) fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) ->
                 .iter()
                 .map(|o| {
                     let (line, column) = at(*o);
-                    crate::lint::Related {
+                    super::lint::Related {
                         file: file.to_path_buf(),
                         line,
                         column,
@@ -671,7 +671,7 @@ pub(crate) fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) ->
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub(crate) const RULES: &[(&str, &str)] = &[
+pub const RULES: &[(&str, &str)] = &[
     (
         "lint_600",
         "A combinational process does not assign a signal on every path, inferring a latch.",

@@ -18,11 +18,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
-use vsg_rs::Parsed;
 
-use crate::design::{all_tokens, assignments, find, is_not_combinational, path, reads, text_of};
-use crate::lint::Finding;
+use super::design::{all_tokens, assignments, find, is_not_combinational, path, reads, text_of};
+use super::lint::Finding;
 
 /// The signals each signal depends on.
 type Graph = BTreeMap<String, BTreeSet<String>>;
@@ -137,7 +137,7 @@ const ASSIGNMENTS: &[NodeKind] = &[
     NodeKind::SelectedWaveformAssignment,
 ];
 
-pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
+pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
     for architecture in find(parsed.root(), NodeKind::ArchitectureBody) {
         let mut graph = Graph::new();
@@ -172,7 +172,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
                 .filter_map(|signal| {
                     let at = offsets.get(signal)?;
                     let (line, column) = parsed.line_col(*at);
-                    Some(crate::lint::Related {
+                    Some(super::lint::Related {
                         file: file.to_path_buf(),
                         line,
                         column,
@@ -198,7 +198,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub(crate) const RULES: &[(&str, &str)] = &[(
+pub const RULES: &[(&str, &str)] = &[(
     "lint_720",
     "A signal depends on itself through combinational logic, with no register in the loop.",
 )];

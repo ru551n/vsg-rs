@@ -5,6 +5,7 @@
 //! stream and comments against the original before it is returned.
 
 pub mod align;
+pub mod analysis;
 pub mod blank;
 pub mod config;
 mod doc;

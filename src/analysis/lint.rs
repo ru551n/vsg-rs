@@ -27,32 +27,32 @@ include!(concat!(env!("OUT_DIR"), "/vhdl_libraries.rs"));
 /// cycle, the declaration a name resolves to. Structured rather than written into the message,
 /// so the console, SARIF and any future consumer can each present it their own way.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub(crate) struct Related {
-    pub(crate) file: PathBuf,
+pub struct Related {
+    pub file: PathBuf,
     /// One-based, as every report format wants it.
-    pub(crate) line: usize,
-    pub(crate) column: usize,
-    pub(crate) message: String,
+    pub line: usize,
+    pub column: usize,
+    pub message: String,
 }
 
 #[derive(Debug)]
-pub(crate) struct Finding {
-    pub(crate) file: PathBuf,
-    pub(crate) rule: &'static str,
+pub struct Finding {
+    pub file: PathBuf,
+    pub rule: &'static str,
     /// One-based, as every report format wants it.
-    pub(crate) line: usize,
-    pub(crate) column: usize,
-    pub(crate) message: String,
+    pub line: usize,
+    pub column: usize,
+    pub message: String,
     /// The other places this finding is about. Empty for most rules.
-    pub(crate) related: Vec<Related>,
+    pub related: Vec<Related>,
 }
 
-pub(crate) struct Analysis {
-    pub(crate) findings: Vec<Finding>,
+pub struct Analysis {
+    pub findings: Vec<Finding>,
     /// Inputs `vhdl_lang` could not parse, which keep their style findings and nothing else.
-    pub(crate) unanalysed: Vec<PathBuf>,
+    pub unanalysed: Vec<PathBuf>,
     /// Whether the project told us what its libraries are (`vhdl_ls.toml`).
-    pub(crate) mapped: bool,
+    pub mapped: bool,
 }
 
 /// Rules that only need the file itself, and so mean something even when the run does not know
@@ -62,7 +62,7 @@ pub(crate) struct Analysis {
 /// makes the rules that depend on resolution produce nonsense: on 50 `VUnit` files, 9968
 /// `lint_100` findings and 623 knock-on `lint_302`. Reporting those by default would make the
 /// first run useless, so they wait until the project says where its libraries are.
-pub(crate) fn needs_no_library_map(rule: &str) -> bool {
+pub fn needs_no_library_map(rule: &str) -> bool {
     matches!(rule, "lint_001" | "lint_002" | "lint_003")
 }
 
@@ -72,7 +72,7 @@ pub(crate) fn needs_no_library_map(rule: &str) -> bool {
 ///
 /// `SyntaxError` and `Internal` are not here: vsg-rs reports parse failures itself, and an
 /// internal error of the analyser is not a finding about the code.
-pub(crate) static CODES: &[(&str, &str, &str)] = &[
+pub static CODES: &[(&str, &str, &str)] = &[
     // Advisory lints
     (
         "MissingInSensitivityList",
@@ -357,7 +357,7 @@ fn rule_of(code: &str) -> Option<(&'static str, &'static str)> {
 }
 
 /// Every rule this layer can report, for `--list_rules` and the configuration.
-pub(crate) fn rules() -> impl Iterator<Item = (&'static str, &'static str)> {
+pub fn rules() -> impl Iterator<Item = (&'static str, &'static str)> {
     CODES
         .iter()
         .map(|(_, rule, description)| (*rule, *description))
@@ -460,7 +460,7 @@ fn project_config() -> Option<PathBuf> {
 
 /// Which libraries each file belongs to, from the project's `vhdl_ls.toml`. Empty when the
 /// project has no library map, which is also when `vsg_rs: testbench_libraries` cannot be used.
-pub(crate) fn libraries_of_files() -> BTreeMap<PathBuf, Vec<String>> {
+pub fn libraries_of_files() -> BTreeMap<PathBuf, Vec<String>> {
     let mut out: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
     let Some(path) = project_config() else {
         return out;
@@ -482,7 +482,7 @@ pub(crate) fn libraries_of_files() -> BTreeMap<PathBuf, Vec<String>> {
     out
 }
 
-pub(crate) fn analyse(files: &[PathBuf]) -> Result<Analysis, String> {
+pub fn analyse(files: &[PathBuf]) -> Result<Analysis, String> {
     let config = configuration(files, project_config().as_deref())?;
     let mut project = Project::from_config(config, &mut Quiet);
     project.enable_all_linters();

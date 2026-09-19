@@ -41,7 +41,7 @@ struct Diagnostic {
     fixable: bool,
     /// The other places this finding is about; see `lint::Related`.
     #[serde(default)]
-    related: Vec<crate::lint::Related>,
+    related: Vec<vsg_rs::analysis::lint::Related>,
     /// The edits of this finding's fix, when it has a safe one.
     #[serde(default)]
     fix: Vec<Replacement>,
@@ -432,7 +432,7 @@ fn normalize(args: impl Iterator<Item = String>) -> Vec<String> {
 
 /// What `lint_602` (suffix) and `lint_603` (prefix) accept. Either rule enabled without a list
 /// of its own means the usual convention for it.
-fn naming_rules(cfg: &Config) -> Result<crate::design::Naming, String> {
+fn naming_rules(cfg: &Config) -> Result<vsg_rs::analysis::design::Naming, String> {
     let affixes = |rule: &str, key: &str, fallback: &[&str]| -> Result<Vec<_>, String> {
         // A rule that is off contributes nothing, which is what an empty list means.
         let Some(settings) = cfg.rule_by_id(rule).filter(|s| s.enabled) else {
@@ -446,10 +446,12 @@ fn naming_rules(cfg: &Config) -> Result<crate::design::Naming, String> {
         };
         listed
             .iter()
-            .map(|affix| crate::design::Affix::new(affix).map_err(|e| format!("{rule}: {e}")))
+            .map(|affix| {
+                vsg_rs::analysis::design::Affix::new(affix).map_err(|e| format!("{rule}: {e}"))
+            })
             .collect()
     };
-    Ok(crate::design::Naming {
+    Ok(vsg_rs::analysis::design::Naming {
         suffixes: affixes("lint_602", "suffixes", &["_q", "_r", "_reg"])?,
         prefixes: affixes("lint_603", "prefixes", &["r_"])?,
     })
@@ -969,7 +971,7 @@ fn is_layout(rule: &str) -> bool {
 /// stands for several findings and has neither.
 #[derive(Default)]
 struct SarifExtras<'a> {
-    related: &'a [crate::lint::Related],
+    related: &'a [vsg_rs::analysis::lint::Related],
     fix: &'a [Replacement],
 }
 
@@ -1152,13 +1154,13 @@ fn sarif_report(results: &[FileResult]) -> String {
 /// Every rule of the lint layer: the front end's own, and the structural ones vsg-rs adds.
 /// One list, so `--list_rules` and `--explain` can never disagree about what exists.
 fn lint_rules() -> impl Iterator<Item = (&'static str, &'static str)> {
-    crate::lint::rules()
-        .chain(crate::design::RULES.iter().copied())
-        .chain(crate::elaborate::RULES.iter().copied())
-        .chain(crate::fsm::RULES.iter().copied())
-        .chain(crate::combinational::RULES.iter().copied())
-        .chain(crate::clockdomain::RULES.iter().copied())
-        .chain(crate::width::RULES.iter().copied())
+    vsg_rs::analysis::lint::rules()
+        .chain(vsg_rs::analysis::design::RULES.iter().copied())
+        .chain(vsg_rs::analysis::elaborate::RULES.iter().copied())
+        .chain(vsg_rs::analysis::fsm::RULES.iter().copied())
+        .chain(vsg_rs::analysis::combinational::RULES.iter().copied())
+        .chain(vsg_rs::analysis::clockdomain::RULES.iter().copied())
+        .chain(vsg_rs::analysis::width::RULES.iter().copied())
 }
 
 fn explain_rule(rule: &str) -> ExitCode {
@@ -1283,21 +1285,21 @@ fn fix_options(args: &Args) -> Result<FixOptions, String> {
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 struct Index {
     project: Option<Project>,
-    entities: Option<crate::elaborate::Entities>,
+    entities: Option<vsg_rs::analysis::elaborate::Entities>,
 }
 
 fn index_of(files: &[PathBuf], style: bool, lint: bool) -> Index {
     Index {
         project: style.then(|| project(files)),
-        entities: lint.then(|| crate::elaborate::entities(files)),
+        entities: lint.then(|| vsg_rs::analysis::elaborate::entities(files)),
     }
 }
 
 /// Merge two port tables the way `elaborate::entities` does within one: first definition wins.
 fn merge_entities(
-    mut into: crate::elaborate::Entities,
-    from: crate::elaborate::Entities,
-) -> crate::elaborate::Entities {
+    mut into: vsg_rs::analysis::elaborate::Entities,
+    from: vsg_rs::analysis::elaborate::Entities,
+) -> vsg_rs::analysis::elaborate::Entities {
     for (name, ports) in from {
         into.entry(name).or_insert(ports);
     }
@@ -1501,9 +1503,9 @@ struct PerFile {
 fn lint_files(
     files: &[PathBuf],
     indices: &[usize],
-    entities: &crate::elaborate::Entities,
+    entities: &vsg_rs::analysis::elaborate::Entities,
     lint_cfg: &Config,
-    kind_sources: &crate::testbench::Kinds,
+    kind_sources: &vsg_rs::analysis::testbench::Kinds,
 ) -> Result<Vec<PerFile>, String> {
     // Testbench code gets the `testbench` rule block, hardware the `rtl` one. There are only ever
     // those two, so they are resolved once rather than per file -- including the naming patterns
@@ -1532,14 +1534,14 @@ fn lint_files(
                     found: Vec::new(),
                 };
             }
-            let reason = crate::testbench::classify(&parsed, file, kind_sources);
+            let reason = vsg_rs::analysis::testbench::classify(&parsed, file, kind_sources);
             let (cfg, naming) = if reason.is_some() { &testbench } else { &rtl };
-            let wiring = crate::elaborate::undriven(&parsed, file, entities);
-            let machines = crate::fsm::check(&parsed, file);
-            let loops = crate::combinational::check(&parsed, file);
-            let crossings = crate::clockdomain::check(&parsed, file, &cfg.synchronizers);
-            let sizes = crate::width::check(&parsed, file);
-            let found = crate::design::check(&parsed, file, naming)
+            let wiring = vsg_rs::analysis::elaborate::undriven(&parsed, file, entities);
+            let machines = vsg_rs::analysis::fsm::check(&parsed, file);
+            let loops = vsg_rs::analysis::combinational::check(&parsed, file);
+            let crossings = vsg_rs::analysis::clockdomain::check(&parsed, file, &cfg.synchronizers);
+            let sizes = vsg_rs::analysis::width::check(&parsed, file);
+            let found = vsg_rs::analysis::design::check(&parsed, file, naming)
                 .into_iter()
                 .chain(wiring)
                 .chain(machines)
@@ -1591,7 +1593,7 @@ fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOpti
     #[derive(serde::Deserialize)]
     struct LintRequest {
         indices: Vec<usize>,
-        entities: crate::elaborate::Entities,
+        entities: vsg_rs::analysis::elaborate::Entities,
         /// The configuration files the lint layer reads, already in merge order, so a worker
         /// resolves exactly the configuration the parent would have.
         configuration: Vec<PathBuf>,
@@ -1617,7 +1619,7 @@ fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOpti
                 }
             }
         };
-        let kind_sources = crate::testbench::Kinds {
+        let kind_sources = vsg_rs::analysis::testbench::Kinds {
             patterns: &cfg.testbench_files,
             libraries: &cfg.testbench_libraries,
             of_file: &lint.libraries,
@@ -1864,7 +1866,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     // Several files are read together: the style layer checks uses of package declarations and
     // entity interfaces across files, and the lint layer needs every entity's port modes. Both
     // come from one parse per file, in the workers, so neither costs a pass of its own.
-    let mut entities = crate::elaborate::Entities::new();
+    let mut entities = vsg_rs::analysis::elaborate::Entities::new();
     if !args.stdin && files.len() > 1 {
         let start = std::time::Instant::now();
         let request = |chunk: &[usize]| serde_json::json!({ "index": chunk });
@@ -1984,7 +1986,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         // survive a file the analyser cannot parse. The port table comes from the index round
         // above; a single input never has one, so it is built here.
         if entities.is_empty() {
-            entities = crate::elaborate::entities(&files);
+            entities = vsg_rs::analysis::elaborate::entities(&files);
         }
         // Why each file counts as a testbench, for `--debug`. Owned, because a worker sends it.
         let mut kinds: std::collections::BTreeMap<PathBuf, String> =
@@ -1993,9 +1995,9 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         let of_file = if cfg.testbench_libraries.is_empty() {
             std::collections::BTreeMap::new()
         } else {
-            crate::lint::libraries_of_files()
+            vsg_rs::analysis::lint::libraries_of_files()
         };
-        let kind_sources = crate::testbench::Kinds {
+        let kind_sources = vsg_rs::analysis::testbench::Kinds {
             patterns: &cfg.testbench_files,
             libraries: &cfg.testbench_libraries,
             of_file: &of_file,
@@ -2061,12 +2063,12 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 eprintln!("DEBUG:   {} ({reason})", file.display());
             }
         }
-        match crate::lint::analyse(&files) {
+        match vsg_rs::analysis::lint::analyse(&files) {
             Ok(analysis) => {
                 let mapped = analysis.mapped;
                 let mut held_back = 0usize;
                 for f in analysis.findings {
-                    if !mapped && !crate::lint::needs_no_library_map(f.rule) {
+                    if !mapped && !vsg_rs::analysis::lint::needs_no_library_map(f.rule) {
                         held_back += 1;
                         continue;
                     }
@@ -2105,8 +2107,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                     // The same list `--list_rules` and `--explain` read, so the three cannot
                     // disagree about how many rules the lint layer has.
                     let all = lint_rules().count();
-                    let inactive = crate::lint::rules()
-                        .filter(|(id, _)| !crate::lint::needs_no_library_map(id))
+                    let inactive = vsg_rs::analysis::lint::rules()
+                        .filter(|(id, _)| !vsg_rs::analysis::lint::needs_no_library_map(id))
                         .count();
                     let findings = if held_back > 0 {
                         format!(", and {held_back} finding(s) of theirs were held back")

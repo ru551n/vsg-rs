@@ -13,11 +13,11 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
-use vsg_rs::Parsed;
 
-use crate::design::{all_tokens, assignments, find, path, reads};
-use crate::lint::Finding;
+use super::design::{all_tokens, assignments, find, path, reads};
+use super::lint::Finding;
 
 /// The width of a range such as `7downto0` -- `text_of` joins tokens without spaces, so the
 /// keyword is not surrounded by any. `None` unless both bounds are integer literals.
@@ -94,7 +94,7 @@ fn widths(node: &SyntaxNode, out: &mut BTreeMap<String, u64>) {
 /// What can stand before the names in a declaration, and is not one.
 const KEYWORDS: &[&str] = &["signal", "variable", "constant", "shared", "file"];
 
-pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
+pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut ports = BTreeMap::new();
     for entity in find(parsed.root(), NodeKind::EntityDeclaration) {
@@ -162,7 +162,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub(crate) const RULES: &[(&str, &str)] = &[(
+pub const RULES: &[(&str, &str)] = &[(
     "lint_740",
     "A vector is assigned to one of a different width.",
 )];

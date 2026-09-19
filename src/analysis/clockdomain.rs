@@ -17,11 +17,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
-use vsg_rs::Parsed;
 
-use crate::design::{all_tokens, assignments, find, path, reads, text_of};
-use crate::lint::Finding;
+use super::design::{all_tokens, assignments, find, path, reads, text_of};
+use super::lint::Finding;
 
 /// The lower-case text of every token under a node, with semicolons dropped.
 fn words(node: &SyntaxNode) -> Vec<String> {
@@ -81,7 +81,7 @@ fn through_synchronizers(architecture: &SyntaxNode, patterns: &[String]) -> BTre
             .to_owned();
         if !patterns
             .iter()
-            .any(|pattern| vsg_rs::config::glob(pattern.as_bytes(), entity.as_bytes()))
+            .any(|pattern| crate::config::glob(pattern.as_bytes(), entity.as_bytes()))
         {
             continue;
         }
@@ -100,7 +100,7 @@ const ASSIGNMENTS: &[NodeKind] = &[
     NodeKind::SelectedWaveformAssignment,
 ];
 
-pub(crate) fn check(parsed: &Parsed, file: &Path, synchronizers: &[String]) -> Vec<Finding> {
+pub fn check(parsed: &Parsed, file: &Path, synchronizers: &[String]) -> Vec<Finding> {
     let mut findings = Vec::new();
     for architecture in find(parsed.root(), NodeKind::ArchitectureBody) {
         let processes = find(&architecture, NodeKind::ProcessStatement);
@@ -171,7 +171,7 @@ pub(crate) fn check(parsed: &Parsed, file: &Path, synchronizers: &[String]) -> V
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub(crate) const RULES: &[(&str, &str)] = &[(
+pub const RULES: &[(&str, &str)] = &[(
     "lint_700",
     "A signal registered on one clock is used in logic on another, without a synchroniser.",
 )];

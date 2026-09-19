@@ -22,6 +22,26 @@ is `--check`, which takes the layers as a comma-separated list.
 `--fix` belongs to `style` and is refused without it: a lint finding never carries a fix, because
 fixing one would change what the design does.
 
+## Configuration files
+
+`-c` takes several files and merges them in order, so a repository's own configuration can sit on
+top of a shared one:
+
+```sh
+vsg-rs --recursive src -c company.yaml project.yaml
+```
+
+The lint layer can have files of its own, merged after `-c` and applied only to it, so a team's
+lint policy need not be mixed into its style policy:
+
+```sh
+vsg-rs lint --recursive src -c style.yaml -lc lint.yaml
+vsg-rs lint --recursive src -lc company-lint.yaml project-lint.yaml
+```
+
+`-lc` is short for `--lint_configuration`. Files given there are ignored when only the style
+layer runs.
+
 Lint rules are **errors unless you say otherwise**. A linter that only warns is a linter nobody
 reads; turn individual rules down in the configuration instead:
 

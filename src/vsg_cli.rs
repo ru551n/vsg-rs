@@ -236,6 +236,10 @@ struct Args {
     /// Print how many violations each rule reports, over all inputs (vsg-rs extension)
     #[arg(long)]
     statistics: bool,
+    /// Configuration applied to the lint layer only, after `-c`. Several files are merged in
+    /// order (vsg-rs extension)
+    #[arg(long = "lint_configuration", value_name = "LINT_CONFIGURATION", num_args = 1..)]
+    lint_configuration: Vec<PathBuf>,
     /// Which layers to run, comma separated: `style` (VSG's rules, the default) and `lint`
     /// (rules that need name resolution). `vsg-rs lint ...` is the short way to say
     /// `--check lint` (vsg-rs extension)
@@ -312,6 +316,7 @@ fn normalize(args: impl Iterator<Item = String>) -> Vec<String> {
                 "-of" => "--output_format",
                 "-oc" => "--output_configuration",
                 "-rc" => "--rule_configuration",
+                "-lc" => "--lint_configuration",
                 "-ap" => "--all_phases",
                 _ => return a,
             };
@@ -1407,6 +1412,21 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             r.violations.clear();
         }
     }
+    // The lint layer may have rules of its own: the base configuration with `--lint_configuration`
+    // merged over it, so one file can carry a team's lint policy without touching its style one.
+    let lint_cfg = if args.lint_configuration.is_empty() {
+        std::borrow::Cow::Borrowed(&cfg)
+    } else {
+        let mut paths = configuration.clone();
+        paths.extend(args.lint_configuration.iter().cloned());
+        match Config::load(&paths) {
+            Ok(merged) => std::borrow::Cow::Owned(merged),
+            Err(e) => {
+                eprintln!("ERROR: {e}");
+                return ExitCode::from(1);
+            }
+        }
+    };
     if lint && !args.stdin {
         // Design checks on our own tree: they need no resolution, so they run per file and
         // survive a file the analyser cannot parse.
@@ -1437,7 +1457,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             if let Some(reason) = reason {
                 kinds.insert(file.clone(), reason);
             }
-            let cfg = cfg.for_kind(if reason.is_some() { "testbench" } else { "rtl" });
+            let cfg = lint_cfg.for_kind(if reason.is_some() { "testbench" } else { "rtl" });
             for f in crate::design::check(&parsed, file) {
                 let settings = cfg.rule_by_id(f.rule);
                 if settings.as_ref().is_some_and(|s| !s.enabled) {
@@ -1475,7 +1495,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                     };
                     // Picky by default: a lint rule is an error unless the configuration says
                     // otherwise, and disabling it in the configuration switches it off.
-                    let file_cfg = cfg.for_kind(if kinds.contains_key(&f.file) {
+                    let file_cfg = lint_cfg.for_kind(if kinds.contains_key(&f.file) {
                         "testbench"
                     } else {
                         "rtl"

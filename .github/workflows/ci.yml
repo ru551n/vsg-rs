@@ -85,6 +85,22 @@ jobs:
       - run: python scripts/gen_rule_docs.py --check
       - run: mkdocs build --strict --site-dir /tmp/site
 
+  # The VS Code client is a launcher, not logic, but it still has to compile: a type error here
+  # would only be found when someone tried to package a release.
+  vscode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+        working-directory: editors/vscode
+      - run: npm run compile
+        working-directory: editors/vscode
+
   # How much of the code the tests reach; a number per pull request, not a gate.
   coverage:
     runs-on: ubuntu-latest

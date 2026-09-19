@@ -58,7 +58,9 @@ A file that does not parse reports its syntax errors and nothing else, and is ne
 
 ## Editors
 
-Any client that can launch a command works. See [editors](editors.md).
+Any client that can launch a command works. On VS Code there is an
+[extension](https://github.com/ru551n/vsg-rs/tree/main/editors/vscode) that launches it for you;
+everywhere else, launch `vsg-rs lsp` directly. See [editors](editors.md).
 
 ```jsonc
 // Neovim, with nvim-lspconfig's generic interface

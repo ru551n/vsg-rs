@@ -1,0 +1,7 @@
+.gitignore
+.vscodeignore
+tsconfig.json
+src/**
+out/**/*.map
+node_modules/typescript/**
+node_modules/@types/**

@@ -1,0 +1,80 @@
+{
+  "name": "vsg-rs",
+  "displayName": "vsg-rs — VHDL formatter and static analysis",
+  "description": "Formatting, diagnostics and quick fixes for VHDL, from the vsg-rs language server. Complements a VHDL language server such as VHDL-LS.",
+  "version": "0.11.0",
+  "publisher": "ru551n",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ru551n/vsg-rs.git",
+    "directory": "editors/vscode"
+  },
+  "categories": ["Formatters", "Linters", "Programming Languages"],
+  "keywords": ["vhdl", "formatter", "linter", "vsg"],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": ["onLanguage:vhdl"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "vhdl",
+        "aliases": ["VHDL"],
+        "extensions": [".vhd", ".vhdl"]
+      }
+    ],
+    "configuration": {
+      "title": "vsg-rs",
+      "properties": {
+        "vsg-rs.server.mode": {
+          "type": "string",
+          "enum": ["systemPath", "userPath"],
+          "enumDescriptions": [
+            "Run `vsg-rs` from PATH.",
+            "Run the executable named by vsg-rs.server.path."
+          ],
+          "default": "systemPath",
+          "description": "Which vsg-rs executable to run."
+        },
+        "vsg-rs.server.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a vsg-rs executable, used when vsg-rs.server.mode is userPath. Point this at target/debug/vsg-rs to test a local build."
+        },
+        "vsg-rs.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Log the traffic between the editor and the server to the vsg-rs output channel."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "vsg-rs.restartServer",
+        "title": "Restart Server",
+        "category": "vsg-rs"
+      },
+      {
+        "command": "vsg-rs.showOutput",
+        "title": "Show Output",
+        "category": "vsg-rs"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.7.0"
+  }
+}

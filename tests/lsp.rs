@@ -168,6 +168,16 @@ fn parse(mut data: &[u8]) -> Vec<serde_json::Value> {
     out
 }
 
+/// A file URI for a path, on any platform: `file:///home/x.vhd`, `file:///C:/dir/x.vhd`.
+fn file_uri(path: &std::path::Path) -> String {
+    let text = path.display().to_string().replace('\\', "/");
+    if text.starts_with('/') {
+        format!("file://{text}")
+    } else {
+        format!("file:///{text}")
+    }
+}
+
 fn initialize() -> serde_json::Value {
     serde_json::json!({
         "jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -308,7 +318,7 @@ fn formatting_is_what_the_command_line_would_have_written() {
     assert!(fixed.status.success() || fixed.status.code() == Some(1));
     let expected = std::fs::read_to_string(&file).expect("read back");
 
-    let uri = format!("file://{}", file.display());
+    let uri = file_uri(&file);
     let got = Session::start().talk(
         &[
             did_open(&uri, source),

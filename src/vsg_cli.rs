@@ -1382,6 +1382,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     if lint && !args.stdin {
         // Design checks on our own tree: they need no resolution, so they run per file and
         // survive a file the analyser cannot parse.
+        let mut kinds: std::collections::BTreeMap<PathBuf, &'static str> =
+            std::collections::BTreeMap::new();
         for file in &files {
             // What is on disk now, so positions match the file after `--fix` wrote it.
             let Ok(source) = std::fs::read(file) else {
@@ -1391,6 +1393,12 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             if !parsed.syntax_errors().is_empty() {
                 continue;
             }
+            // Testbench code gets the `testbench` rule block, hardware the `rtl` one.
+            let reason = crate::testbench::classify(&parsed, file, &cfg.testbench_files);
+            if let Some(reason) = reason {
+                kinds.insert(file.clone(), reason);
+            }
+            let cfg = cfg.for_kind(if reason.is_some() { "testbench" } else { "rtl" });
             for f in crate::design::check(&parsed, file) {
                 let settings = cfg.rule_by_id(f.rule);
                 if settings.as_ref().is_some_and(|s| !s.enabled) {
@@ -1408,6 +1416,12 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 }
             }
         }
+        if args.debug && !kinds.is_empty() {
+            eprintln!("DEBUG: {} file(s) treated as testbench:", kinds.len());
+            for (file, reason) in &kinds {
+                eprintln!("DEBUG:   {} ({reason})", file.display());
+            }
+        }
         match crate::lint::analyse(&files) {
             Ok(analysis) => {
                 let mapped = analysis.mapped;
@@ -1422,7 +1436,12 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                     };
                     // Picky by default: a lint rule is an error unless the configuration says
                     // otherwise, and disabling it in the configuration switches it off.
-                    let settings = cfg.rule_by_id(f.rule);
+                    let file_cfg = cfg.for_kind(if kinds.contains_key(&f.file) {
+                        "testbench"
+                    } else {
+                        "rtl"
+                    });
+                    let settings = file_cfg.rule_by_id(f.rule);
                     if settings.as_ref().is_some_and(|s| !s.enabled) {
                         continue;
                     }

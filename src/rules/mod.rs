@@ -260,8 +260,9 @@ fn owner(id: &str) -> Owner {
         .map_or(Owner::Formatter, |i| catalog::OWNERS[i].1)
 }
 
-pub(crate) fn is_known_rule(id: &str) -> bool {
-    !crate::vsg_defaults::defaults()["rule"][id].is_null()
+pub fn is_known_rule(id: &str) -> bool {
+    // `lint_*` are vsg-rs's own rules (the lint layer); the rest are VSG's.
+    id.starts_with("lint_") || !crate::vsg_defaults::defaults()["rule"][id].is_null()
 }
 
 /// Run every enabled rule on a snapshot. Violations are sorted by position, then rule id.

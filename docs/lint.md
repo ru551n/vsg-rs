@@ -27,6 +27,43 @@ rule:
     disable: true          # this design drives a bus from several places on purpose
 ```
 
+## Testbenches get their own rules
+
+A latch or a second driver means nothing in a testbench: it drives a signal from two places on
+purpose and holds values between `wait`s by design. So each file is classified as `rtl` or
+`testbench`, and each kind can carry its own rule block:
+
+```yaml
+vsg_rs:
+  testbench_files: ['test/**', 'tb_*.vhd', '**/sim/*.vhd']
+
+  testbench:
+    rule:
+      lint_600: {disable: true}    # latches are not a testbench problem
+      lint_601: {disable: true}    # nor is driving a signal from two places
+      lint_004: {severity: warning}
+
+  rtl:
+    rule:
+      lint_600: {disable: false}
+```
+
+Nothing is disabled unless you say so: the blocks are yours, and without them both kinds are
+checked identically.
+
+**Patterns** are globs. One without a `/` is about the file name wherever it lives (`tb_*.vhd`),
+one with a `/` is about the path and also matches deeper, so `test/**` covers
+`modules/fifo/test/tb_fifo.vhd`. `*` stops at a directory separator, `**` does not.
+
+**Without `testbench_files`** a file is classified by its own shape, in this order: a
+`-- vsg-rs: testbench` comment near the top, a verification library in the code (`vunit_lib`,
+`osvvm`, `uvvm_util`, `runner_cfg`), an entity with no ports, then the usual names and
+directories (`tb_`, `_tb`, `test/`, `sim/`, `bench/`, ...). Over three corpora this classified
+0 of 18 real RTL files as testbench and 16 of 16 testbenches correctly.
+
+`--debug` prints every file treated as a testbench and which of those signals matched, so the
+classification is never silent.
+
 ## Telling it where your libraries are
 
 Everything past the first few rules needs to resolve names across files, and that needs a library

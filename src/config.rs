@@ -172,6 +172,10 @@ pub struct Config {
     raw_pragma: Option<serde_json::Value>,
     /// `file_rules`: (path pattern, `rule` block) applied to matching files.
     file_rules: Vec<(String, Value)>,
+    /// `vsg_rs: testbench_files`: globs naming the files that are testbenches, not hardware.
+    pub testbench_files: Vec<String>,
+    /// `vsg_rs: rtl` / `vsg_rs: testbench`: a `rule` block for each kind of file.
+    kind_rules: BTreeMap<String, Value>,
     /// `file_list`: (path or glob pattern, the configuration file that lists it).
     pub file_list: Vec<(String, PathBuf)>,
     /// `local_rules`: the directory of VSG rule plugins.
@@ -386,6 +390,26 @@ impl Config {
         let map = value.as_mapping().ok_or("`vsg_rs` must be a mapping")?;
         for (key, value) in map {
             match key.as_str().unwrap_or_default() {
+                "testbench_files" => {
+                    let list = value
+                        .as_sequence()
+                        .ok_or("`testbench_files` must be a list of patterns")?;
+                    self.testbench_files = list
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|p| p.replace('\\', "/").trim_start_matches("./").to_owned())
+                        .collect();
+                }
+                kind @ ("rtl" | "testbench") => {
+                    let rule = value
+                        .as_mapping()
+                        .and_then(|m| m.get("rule"))
+                        .ok_or_else(|| format!("`vsg_rs: {kind}` needs a `rule` block"))?;
+                    // Validated now, applied per file once its kind is known.
+                    let mut probe = self.clone();
+                    probe.merge_rules(rule)?;
+                    self.kind_rules.insert(kind.to_owned(), rule.clone());
+                }
                 "reflow_comments" => {
                     self.format.reflow_comments = value
                         .as_bool()
@@ -499,6 +523,19 @@ impl Config {
             // Already validated when loading.
             let _ = cfg.merge_rules(rule);
         }
+        cfg.resolve_format();
+        std::borrow::Cow::Owned(cfg)
+    }
+
+    /// The configuration for a file of this kind (`rtl` or `testbench`), which is the ordinary
+    /// configuration with that kind's `rule` block merged over it.
+    pub fn for_kind(&self, kind: &str) -> std::borrow::Cow<'_, Config> {
+        let Some(rule) = self.kind_rules.get(kind) else {
+            return std::borrow::Cow::Borrowed(self);
+        };
+        let mut cfg = self.clone();
+        // Already validated when loading.
+        let _ = cfg.merge_rules(rule);
         cfg.resolve_format();
         std::borrow::Cow::Owned(cfg)
     }
@@ -872,6 +909,11 @@ impl Config {
 
     /// Settings of any VSG rule by id, starting from VSG's defaults.
     pub fn rule_by_id(&self, id: &str) -> Option<RuleSettings> {
+        // The lint layer's rules are not VSG's, so they have no entry in its defaults: they are
+        // enabled and error by default, and the configuration layers over that as usual.
+        if id.starts_with("lint_") {
+            return Some(self.layered(id, &["lint"], true, Severity::Error, BTreeMap::new()));
+        }
         let defaults = crate::vsg_defaults::defaults()["rule"].get(id)?;
         let mut options: BTreeMap<String, Value> = BTreeMap::new();
         for (k, v) in defaults.as_object().into_iter().flatten() {

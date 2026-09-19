@@ -54,7 +54,6 @@ nav:
       - Measured compatibility: compatibility.md
       - Rule status: rule-status.md
   - Background:
-      - Next to Linty and Sigasi: comparison.md
       - Roadmap to a full linter: roadmap-linter.md
       - Architecture: architecture.md
       - VHDL frontend: vhdl-frontend.md

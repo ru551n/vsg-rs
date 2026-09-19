@@ -8,7 +8,7 @@
 //!
 //! Three ways to decide, most authoritative first:
 //!
-//! 1. `vsg_rs: testbench_files` — globs, like Linty's simulation paths.
+//! 1. `vsg_rs: testbench_files` — globs naming the testbenches.
 //! 2. `vsg_rs: testbench_libraries` — library names from the project's `vhdl_ls.toml`, for
 //!    projects that already say which library each file belongs to.
 //! 3. `-- vsg-rs: testbench` near the top of a file, for the one file no glob covers.

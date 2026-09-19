@@ -3,13 +3,9 @@
 What vsg-rs would need to be a linter people pick over a commercial tool, rather than a style
 checker that happens to be free. Ordered by value per effort. `[x]` is already in the tool.
 
-Sources for "what a linter is expected to have": Verible (autofix in place or as a patch, waiver
-files, upward config search, language server), svlint (TOML rule config), Sigasi (262 numbered
-rules, quick fixes at file, library or project scope, a `verify` CLI with JSON, SonarQube-generic
-and Warnings-NG output, inline `@suppress`), Linty (SonarQube quality gates, netlist checks,
-published DO-254 and CNES mappings), and the standard RTL lint checklist (latch inference,
-incomplete sensitivity lists, multiple drivers, width mismatches, unread logic). Details and
-citations in `comparison.md`.
+The feature set below is what linters are generally expected to have, and what the RTL lint
+checklists ask for: latch inference, incomplete sensitivity lists, multiple drivers, width
+mismatches, unread logic, waivers, autofix, and machine-readable output.
 
 ## v1, decided
 
@@ -85,7 +81,7 @@ so this is a second parse in a second phase, not a change to the formatter.
       netlist: a per-process assignment analysis covers the common cases.
 - [ ] **Multiple drivers** on one signal across processes and concurrent assignments.
 - [ ] **Clock and reset heuristics**: a clock not used as a clock, mixed edges, mixed sync/async
-      reset style, a register without a reset. Source level, the way Sigasi does them.
+      reset style, a register without a reset. Source level, without a netlist.
 
 ### How it joins the style layer
 
@@ -120,8 +116,8 @@ Configuration stays one mental model: `semantic_*` ids live in the same `rule:` 
 Everything in §1 beyond a single file needs to know what a library is.
 
 - [ ] **Read `vhdl_ls.toml`** for library mapping (read only; never write one into a repository).
-- [ ] **`--top` awareness**, so rules can treat the top level differently (Linty's
-      `inout`-only-at-top rule is the canonical example).
+- [ ] **`--top` awareness**, so rules can treat the top level differently: `inout` ports only at
+      the top level is the canonical example.
 - [ ] **Testbench versus RTL scoping**: path patterns marking testbench files, and a second
       severity per rule for RTL, as both commercial tools have.
 - [ ] **Mark the current cross-file consistency rules as heuristics** in the report once real
@@ -132,7 +128,7 @@ Everything in §1 beyond a single file needs to know what a library is.
 - [x] Inline `-- vsg_off` / `-- vsg-rs: fmt off` regions.
 - [ ] **Inline waiver with a reason**: `-- vsg-rs: waive signal_008 "generated code"`, reported as
       waived rather than silently dropped.
-- [ ] **Waiver files** (Verible's model): rule, path, line and reason, plus
+- [ ] **Waiver files**: rule, path, line and reason, plus
       **`--generate-waivers`** to write the current findings out as one. That is adoption on a
       legacy codebase in a single command.
 - [ ] **`--waived` reporting**: count and list what was waived, so waivers cannot rot unnoticed.
@@ -143,9 +139,8 @@ Everything in §1 beyond a single file needs to know what a library is.
 
 - [x] SARIF, JUnit, GitLab code quality, syntastic, JSON, `--statistics`, the GitHub Action and
       pre-commit hooks.
-- [ ] **SonarQube generic issue JSON** — the format both Sigasi and Linty feed; it opens every
-      SonarQube shop without them needing a plugin.
-- [ ] **Warnings NG XML** for Jenkins, the other format Sigasi's CLI emits.
+- [ ] **SonarQube generic issue JSON**, which opens every SonarQube shop without a plugin.
+- [ ] **Warnings NG XML** for Jenkins.
 - [ ] **A published standards mapping** (DO-254, STARC, CNES), rule by rule, as a documentation
       table. Both commercial tools sell this; no free VHDL tool publishes one.
 - [ ] **A Docker image** for pipelines that cannot install a binary.
@@ -171,7 +166,7 @@ Everything in §1 beyond a single file needs to know what a library is.
 - [ ] **Result caching** keyed on the file hash and the configuration hash, so an unchanged file
       is not re-checked. The obvious win for pre-commit and large repositories.
 - [ ] **`--watch`** for local iteration.
-- [ ] **Upward configuration search** (Verible's `.rules.verible_lint` behaviour): find `vsg.yaml`
+- [ ] **Upward configuration search**: find `vsg.yaml`
       by walking up from each file, so a subdirectory can refine the style.
 - [ ] *(Declined, and staying declined: a language server — `vhdl_ls` already is one; style
       presets; a configuration generator.)*

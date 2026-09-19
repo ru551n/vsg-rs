@@ -48,7 +48,6 @@ Every release states the VSG version it targets, and `vsg-rs --version` prints i
 
 ## Background
 
-* [vsg-rs next to Linty and Sigasi](comparison.md), and the
-  [roadmap to a full linter](roadmap-linter.md)
+* [Roadmap to a full linter](roadmap-linter.md)
 * [Architecture](architecture.md) and the [VHDL frontend](vhdl-frontend.md)
 * [Performance](performance.md)

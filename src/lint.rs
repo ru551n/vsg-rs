@@ -443,6 +443,30 @@ fn project_config() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
+/// Which libraries each file belongs to, from the project's `vhdl_ls.toml`. Empty when the
+/// project has no library map, which is also when `vsg_rs: testbench_libraries` cannot be used.
+pub(crate) fn libraries_of_files() -> BTreeMap<PathBuf, Vec<String>> {
+    let mut out: BTreeMap<PathBuf, Vec<String>> = BTreeMap::new();
+    let Some(path) = project_config() else {
+        return out;
+    };
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return out;
+    };
+    let parent = path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let Ok(config) = Config::from_str(&text, &parent) else {
+        return out;
+    };
+    for library in config.iter_libraries() {
+        let name = library.name().to_ascii_lowercase();
+        for file in library.file_names(&mut Quiet) {
+            let file = std::fs::canonicalize(&file).unwrap_or(file);
+            out.entry(file).or_default().push(name.clone());
+        }
+    }
+    out
+}
+
 pub(crate) fn analyse(files: &[PathBuf]) -> Result<Analysis, String> {
     let config = configuration(files, project_config().as_deref())?;
     let mut project = Project::from_config(config, &mut Quiet);

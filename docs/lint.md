@@ -51,11 +51,31 @@ vsg_rs:
 Nothing is disabled unless you say so: the blocks are yours, and without them both kinds are
 checked identically.
 
+**Or name the libraries.** A project whose `vhdl_ls.toml` already separates design from
+verification does not need patterns at all:
+
+```toml
+# vhdl_ls.toml
+[libraries]
+rtl_lib.files = ['design/**/*.vhd']
+tb_lib.files  = ['verif/**/*.vhd']
+```
+
+```yaml
+# vsg.yaml
+vsg_rs:
+  testbench_libraries: ['tb_lib', 'osvvm']
+```
+
+Every file in those libraries is a testbench, whatever it is called and wherever it lives. This
+is the one classification that needs a `vhdl_ls.toml`; the others do not.
+
 **Patterns** are globs. One without a `/` is about the file name wherever it lives (`tb_*.vhd`),
 one with a `/` is about the path and also matches deeper, so `test/**` covers
 `modules/fifo/test/tb_fifo.vhd`. `*` stops at a directory separator, `**` does not.
 
-**Without `testbench_files`** a file is classified by its own shape, in this order: a
+**Without `testbench_files` or `testbench_libraries`** a file is classified by its own shape, in
+this order: a
 `-- vsg-rs: testbench` comment near the top, a verification library in the code (`vunit_lib`,
 `osvvm`, `uvvm_util`, `runner_cfg`), an entity with no ports, then the usual names and
 directories (`tb_`, `_tb`, `test/`, `sim/`, `bench/`, ...). Over three corpora this classified

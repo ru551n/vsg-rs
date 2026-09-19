@@ -1384,6 +1384,17 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         // survive a file the analyser cannot parse.
         let mut kinds: std::collections::BTreeMap<PathBuf, &'static str> =
             std::collections::BTreeMap::new();
+        // Which library each file is in, so `testbench_libraries` can name the test ones.
+        let of_file = if cfg.testbench_libraries.is_empty() {
+            std::collections::BTreeMap::new()
+        } else {
+            crate::lint::libraries_of_files()
+        };
+        let kind_sources = crate::testbench::Kinds {
+            patterns: &cfg.testbench_files,
+            libraries: &cfg.testbench_libraries,
+            of_file: &of_file,
+        };
         for file in &files {
             // What is on disk now, so positions match the file after `--fix` wrote it.
             let Ok(source) = std::fs::read(file) else {
@@ -1394,7 +1405,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 continue;
             }
             // Testbench code gets the `testbench` rule block, hardware the `rtl` one.
-            let reason = crate::testbench::classify(&parsed, file, &cfg.testbench_files);
+            let reason = crate::testbench::classify(&parsed, file, &kind_sources);
             if let Some(reason) = reason {
                 kinds.insert(file.clone(), reason);
             }

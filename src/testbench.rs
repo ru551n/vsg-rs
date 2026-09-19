@@ -9,8 +9,10 @@
 //! Three ways to decide, most authoritative first:
 //!
 //! 1. `vsg_rs: testbench_files` — globs, like Linty's simulation paths.
-//! 2. `-- vsg-rs: testbench` near the top of a file, for the one file no glob covers.
-//! 3. Otherwise the shape of the code. Measured over three corpora: 0 of 18 real RTL files were
+//! 2. `vsg_rs: testbench_libraries` — library names from the project's `vhdl_ls.toml`, for
+//!    projects that already say which library each file belongs to.
+//! 3. `-- vsg-rs: testbench` near the top of a file, for the one file no glob covers.
+//! 4. Otherwise the shape of the code. Measured over three corpora: 0 of 18 real RTL files were
 //!    classified as testbench, and 16 of 16 testbenches were.
 
 use std::path::Path;
@@ -79,12 +81,36 @@ fn has_an_entity_without_ports(root: &SyntaxNode) -> bool {
             .any(|e| find(e, NodeKind::PortClause).is_empty())
 }
 
+/// What the run knows about which files are testbenches.
+pub(crate) struct Kinds<'a> {
+    /// `vsg_rs: testbench_files`.
+    pub(crate) patterns: &'a [String],
+    /// `vsg_rs: testbench_libraries`, lowercased.
+    pub(crate) libraries: &'a [String],
+    /// The libraries each file belongs to, from `vhdl_ls.toml`.
+    pub(crate) of_file: &'a std::collections::BTreeMap<std::path::PathBuf, Vec<String>>,
+}
+
 /// Why a file was treated as a testbench, or `None` when it is synthesisable code.
-pub(crate) fn classify(parsed: &Parsed, path: &Path, patterns: &[String]) -> Option<&'static str> {
+pub(crate) fn classify(parsed: &Parsed, path: &Path, kinds: &Kinds<'_>) -> Option<&'static str> {
     let name = path.to_string_lossy().replace('\\', "/");
     let name = name.trim_start_matches("./").to_owned();
-    if patterns.iter().any(|pattern| matches(pattern, &name)) {
+    if kinds.patterns.iter().any(|pattern| matches(pattern, &name)) {
         return Some("listed in `vsg_rs: testbench_files`");
+    }
+    if !kinds.libraries.is_empty() {
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let belongs_to = kinds
+            .of_file
+            .get(&canonical)
+            .or_else(|| kinds.of_file.get(path));
+        if belongs_to.is_some_and(|libraries| {
+            libraries
+                .iter()
+                .any(|library| kinds.libraries.iter().any(|test| test == library))
+        }) {
+            return Some("in a library listed in `vsg_rs: testbench_libraries`");
+        }
     }
     // The directive, near the top of the file rather than buried in the middle of it.
     let head = &parsed.source()[..parsed.source().len().min(2000)];
@@ -135,7 +161,39 @@ mod tests {
     fn classified(source: &str, path: &str, patterns: &[&str]) -> Option<&'static str> {
         let parsed = Parsed::new(source.as_bytes().to_vec());
         let patterns: Vec<String> = patterns.iter().map(|p| (*p).to_owned()).collect();
-        classify(&parsed, Path::new(path), &patterns)
+        let of_file = std::collections::BTreeMap::new();
+        classify(
+            &parsed,
+            Path::new(path),
+            &Kinds {
+                patterns: &patterns,
+                libraries: &[],
+                of_file: &of_file,
+            },
+        )
+    }
+
+    #[test]
+    fn a_test_library_marks_its_files() {
+        let parsed = Parsed::new(RTL.as_bytes().to_vec());
+        let path = Path::new("src/adder.vhd");
+        let mut of_file = std::collections::BTreeMap::new();
+        of_file.insert(path.to_path_buf(), vec!["tb_lib".to_owned()]);
+        let kinds = Kinds {
+            patterns: &[],
+            libraries: &["tb_lib".to_owned()],
+            of_file: &of_file,
+        };
+        assert_eq!(
+            classify(&parsed, path, &kinds),
+            Some("in a library listed in `vsg_rs: testbench_libraries`")
+        );
+        let kinds = Kinds {
+            patterns: &[],
+            libraries: &["other_lib".to_owned()],
+            of_file: &of_file,
+        };
+        assert_eq!(classify(&parsed, path, &kinds), None);
     }
 
     const RTL: &str = "entity adder is\n  port (\n    a : in bit;\n    y : out bit\n  );\n\

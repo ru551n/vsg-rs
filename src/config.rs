@@ -174,6 +174,8 @@ pub struct Config {
     file_rules: Vec<(String, Value)>,
     /// `vsg_rs: testbench_files`: globs naming the files that are testbenches, not hardware.
     pub testbench_files: Vec<String>,
+    /// `vsg_rs: testbench_libraries`: libraries (from `vhdl_ls.toml`) that hold testbenches.
+    pub testbench_libraries: Vec<String>,
     /// `vsg_rs: rtl` / `vsg_rs: testbench`: a `rule` block for each kind of file.
     kind_rules: BTreeMap<String, Value>,
     /// `file_list`: (path or glob pattern, the configuration file that lists it).
@@ -398,6 +400,16 @@ impl Config {
                         .iter()
                         .filter_map(|v| v.as_str())
                         .map(|p| p.replace('\\', "/").trim_start_matches("./").to_owned())
+                        .collect();
+                }
+                "testbench_libraries" => {
+                    let list = value
+                        .as_sequence()
+                        .ok_or("`testbench_libraries` must be a list of library names")?;
+                    self.testbench_libraries = list
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|name| name.trim().to_ascii_lowercase())
                         .collect();
                 }
                 kind @ ("rtl" | "testbench") => {

@@ -20,6 +20,8 @@ use std::path::Path;
 use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
 
+use super::design::{find, text_of};
+
 /// Match a path against one `testbench_files` pattern. A pattern with no `/` is about the file
 /// name wherever it lives (`tb_*.vhd`), one with a `/` is about the path (`test/**`, and a
 /// relative pattern also matches deeper, so `test/**` covers `modules/fifo/test/tb.vhd`).
@@ -55,21 +57,6 @@ fn named_like_a_testbench(path: &Path) -> bool {
                     | "verification"
             )
         })
-}
-
-fn nodes(node: &SyntaxNode, kind: NodeKind, out: &mut Vec<SyntaxNode>) {
-    for child in node.children() {
-        if child.kind() == kind {
-            out.push(child.clone());
-        }
-        nodes(&child, kind, out);
-    }
-}
-
-fn find(node: &SyntaxNode, kind: NodeKind) -> Vec<SyntaxNode> {
-    let mut out = Vec::new();
-    nodes(node, kind, &mut out);
-    out
 }
 
 /// A testbench top has nothing to connect to: no ports, only generics if anything.
@@ -118,8 +105,9 @@ pub fn classify(parsed: &Parsed, path: &Path, kinds: &Kinds<'_>) -> Option<&'sta
     if head.contains("vsg-rs: testbench") {
         return Some("marked with `-- vsg-rs: testbench`");
     }
-    // A verification framework in the context clause, or VUnit's own generic.
-    let code = code_of(parsed.root());
+    // A verification framework in the context clause, or VUnit's own generic. Comments are not
+    // tokens, so a comment mentioning OSVVM does not turn a design file into a testbench.
+    let code = text_of(parsed.root());
     if ["vunit_lib", "osvvm", "uvvm_util", "runner_cfg", "bitvis"]
         .iter()
         .any(|library| code.contains(library))
@@ -133,25 +121,6 @@ pub fn classify(parsed: &Parsed, path: &Path, kinds: &Kinds<'_>) -> Option<&'sta
         return Some("named like a testbench");
     }
     None
-}
-
-/// The code of a node, lowercased and without comments: a comment mentioning OSVVM should not
-/// turn a design file into a testbench.
-fn code_of(node: &SyntaxNode) -> String {
-    let mut out = String::new();
-    let mut stack = vec![node.clone()];
-    while let Some(node) = stack.pop() {
-        for element in node.children_with_tokens() {
-            match element {
-                vhdl_syntax::syntax::SyntaxElement::Node(child) => stack.push(child),
-                vhdl_syntax::syntax::SyntaxElement::Token(t) => {
-                    out += &String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase();
-                    out.push(' ');
-                }
-            }
-        }
-    }
-    out
 }
 
 #[cfg(test)]

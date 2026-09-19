@@ -16,7 +16,7 @@ use std::path::Path;
 use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
 
-use super::design::{all_tokens, assignments, find, path, reads};
+use super::design::{all_tokens, assignments, find, lower, path, reads};
 use super::lint::Finding;
 
 /// The width of a range such as `7downto0` -- `text_of` joins tokens without spaces, so the
@@ -48,10 +48,7 @@ fn widths(node: &SyntaxNode, out: &mut BTreeMap<String, u64>) {
         NodeKind::InterfaceObjectDeclaration,
     ] {
         for declaration in find(node, kind) {
-            let words: Vec<String> = all_tokens(&declaration)
-                .iter()
-                .map(|t| String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase())
-                .collect();
+            let words: Vec<String> = all_tokens(&declaration).iter().map(lower).collect();
             let Some(colon) = words.iter().position(|w| w == ":") else {
                 continue;
             };
@@ -115,7 +112,7 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
                 // gives the source a width this rule does not know.
                 let words: Vec<String> = all_tokens(&statement)
                     .iter()
-                    .map(|t| String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase())
+                    .map(lower)
                     .filter(|t| t != ";")
                     .collect();
                 if words.len() != 3 || words[1] != "<=" {

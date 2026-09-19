@@ -21,17 +21,13 @@ use std::path::Path;
 use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode, SyntaxToken};
 
-use super::design::{all_tokens, assignments, find, is_clocked, path, text_of};
+use super::design::{all_tokens, assignments, find, is_clocked, lower, path, text_of};
 use super::lint::Finding;
 
 /// An enumeration type, its values, and the signals declared with it.
 struct StateType {
     values: Vec<String>,
     signals: BTreeSet<String>,
-}
-
-fn lower(token: &SyntaxToken) -> String {
-    String::from_utf8_lossy(token.text().as_bytes()).to_ascii_lowercase()
 }
 
 /// Every enumeration type declared in an architecture, with the signals that use it.
@@ -101,11 +97,15 @@ fn state_types(architecture: &SyntaxNode) -> BTreeMap<String, StateType> {
 /// be read from the syntax, which disqualifies the whole machine.
 fn assigned(node: &SyntaxNode, state: &StateType) -> Vec<Option<String>> {
     let mut out = Vec::new();
+    // Once for the node, not once per assignment: `node` is the whole architecture when the
+    // reachable states are collected, so walking it again for every assignment made the work
+    // quadratic in the size of the file.
+    let tokens = all_tokens(node);
     for (target, offset) in assignments(node) {
         if !state.signals.contains(&path(&target).0) {
             continue;
         }
-        let after: Vec<String> = all_tokens(node)
+        let after: Vec<String> = tokens
             .iter()
             .skip_while(|t| t.text_offset() <= offset)
             .map(lower)
@@ -125,6 +125,7 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 
     for architecture in find(parsed.root(), NodeKind::ArchitectureBody) {
         let processes = find(&architecture, NodeKind::ProcessStatement);
+        let tokens = all_tokens(&architecture);
         for (name, state) in state_types(&architecture) {
             // A state machine has a register: some signal of the type is assigned under a clock.
             let clocked = processes.iter().filter(|p| is_clocked(p)).any(|process| {
@@ -146,7 +147,7 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
                 if reached.contains(value) {
                     continue;
                 }
-                let Some(offset) = all_tokens(&architecture)
+                let Some(offset) = tokens
                     .iter()
                     .find(|t| lower(t) == *value)
                     .map(SyntaxToken::text_offset)

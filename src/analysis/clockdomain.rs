@@ -20,14 +20,14 @@ use std::path::Path;
 use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
 
-use super::design::{all_tokens, assignments, find, path, reads, text_of};
+use super::design::{all_tokens, assignments, entity_of, find, lower, path, reads};
 use super::lint::Finding;
 
 /// The lower-case text of every token under a node, with semicolons dropped.
 fn words(node: &SyntaxNode) -> Vec<String> {
     all_tokens(node)
         .iter()
-        .map(|t| String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase())
+        .map(lower)
         .filter(|t| t != ";")
         .collect()
 }
@@ -72,13 +72,7 @@ fn through_synchronizers(architecture: &SyntaxNode, patterns: &[String]) -> BTre
         return out;
     }
     for instance in find(architecture, NodeKind::ComponentInstantiationStatement) {
-        let name = text_of(&instance);
-        let name = name.split('(').next().unwrap_or(&name).to_ascii_lowercase();
-        let entity = name
-            .rsplit(['.', ' ', '\n', '\t'])
-            .find(|part| !part.is_empty())
-            .unwrap_or_default()
-            .to_owned();
+        let entity = entity_of(&instance).unwrap_or_default();
         if !patterns
             .iter()
             .any(|pattern| crate::config::glob(pattern.as_bytes(), entity.as_bytes()))

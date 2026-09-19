@@ -49,13 +49,33 @@ pub fn all_tokens(node: &SyntaxNode) -> Vec<vhdl_syntax::syntax::SyntaxToken> {
     out
 }
 
+/// One token's text, lowercased. VHDL is case-insensitive, so every comparison the analysis
+/// layer makes against a keyword, a name or a value is made in lower case.
+pub fn lower(token: &vhdl_syntax::syntax::SyntaxToken) -> String {
+    String::from_utf8_lossy(token.text().as_bytes()).to_ascii_lowercase()
+}
+
 /// The text of a node, lowercased, with the trivia dropped: enough to compare two assignment
 /// targets without resolving either.
 pub fn text_of(node: &SyntaxNode) -> String {
-    all_tokens(node)
-        .iter()
-        .map(|t| String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase())
-        .collect()
+    all_tokens(node).iter().map(lower).collect()
+}
+
+/// The entity a component instantiation names: the last identifier before any architecture in
+/// parentheses, out of `entity work.fifo(rtl)`, `component fifo` or a bare name.
+pub fn entity_of(statement: &SyntaxNode) -> Option<String> {
+    let instantiated = statement
+        .children()
+        .find(|c| c.kind() == NodeKind::InstantiatedEntity)?;
+    let text = text_of(&instantiated);
+    let head = text.split('(').next().unwrap_or(&text);
+    head.rsplit(['.', ' '])
+        .map(|part| part.trim().to_ascii_lowercase())
+        .find(|part| {
+            !part.is_empty()
+                && !matches!(part.as_str(), "entity" | "component" | "configuration")
+                && part.chars().all(|c| c.is_alphanumeric() || c == '_')
+        })
 }
 
 /// The name a signal assignment writes to, as written.
@@ -291,7 +311,7 @@ fn declared_variables(process: &SyntaxNode) -> BTreeSet<String> {
             continue;
         }
         for token in all_tokens(&declaration) {
-            let text = String::from_utf8_lossy(token.text().as_bytes()).to_ascii_lowercase();
+            let text = lower(&token);
             if text == ":" {
                 break; // The type follows; only the names come before it.
             }
@@ -329,8 +349,7 @@ pub fn reads(node: &SyntaxNode, out: &mut Vec<(String, usize)>) {
     if matches!(node.kind(), NodeKind::Name | NodeKind::NameDesignatorPrefix)
         && let Some(token) = all_tokens(node).first()
     {
-        let text = String::from_utf8_lossy(token.text().as_bytes()).to_ascii_lowercase();
-        out.push((text, token.text_offset()));
+        out.push((lower(token), token.text_offset()));
     }
 }
 

@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use crate::Parsed;
 use vhdl_syntax::syntax::{NodeKind, SyntaxNode};
 
-use super::design::{all_tokens, assignments, find, path, reads, text_of};
+use super::design::{all_tokens, assignments, entity_of, find, lower, path, reads, text_of};
 use super::lint::Finding;
 
 /// The ports of one entity, by what they do to a signal connected to them.
@@ -34,7 +34,8 @@ pub struct Ports {
 /// Every entity the run can see, by lower-case name.
 pub type Entities = BTreeMap<String, Ports>;
 
-fn lower(text: &str) -> String {
+/// A name as it is compared here: trimmed, and lower case because VHDL is case-insensitive.
+fn trimmed(text: &str) -> String {
     text.trim().to_ascii_lowercase()
 }
 
@@ -52,7 +53,7 @@ fn ports_of(node: &SyntaxNode) -> Ports {
                 rest.starts_with("out") || rest.starts_with("inout") || rest.starts_with("buffer");
             let reading =
                 rest.starts_with("inout") || (rest.starts_with("in") && !rest.starts_with("inout"));
-            for name in names.split(',').map(lower).filter(|n| !n.is_empty()) {
+            for name in names.split(',').map(trimmed).filter(|n| !n.is_empty()) {
                 if driving {
                     ports.driving.insert(name.clone());
                 }
@@ -83,7 +84,7 @@ pub fn entities(files: &[PathBuf]) -> Entities {
             for declaration in find(parsed.root(), kind) {
                 let Some(name) = all_tokens(&declaration)
                     .iter()
-                    .map(|t| String::from_utf8_lossy(t.text().as_bytes()).to_ascii_lowercase())
+                    .map(lower)
                     .find(|t| t != "entity" && t != "component")
                 else {
                     continue;
@@ -107,21 +108,7 @@ struct Instance {
 fn instantiations(architecture: &SyntaxNode) -> Vec<Instance> {
     let mut out = Vec::new();
     for statement in find(architecture, NodeKind::ComponentInstantiationStatement) {
-        // `entity work.fifo(rtl)`, `component fifo` or a bare name: the entity is the last
-        // identifier before any architecture in parentheses.
-        let Some(instantiated) = statement
-            .children()
-            .find(|c| c.kind() == NodeKind::InstantiatedEntity)
-        else {
-            continue;
-        };
-        let text = text_of(&instantiated);
-        let head = text.split('(').next().unwrap_or(&text);
-        let Some(entity) = head.rsplit(['.', ' ']).map(lower).find(|part| {
-            !part.is_empty()
-                && !matches!(part.as_str(), "entity" | "component" | "configuration")
-                && part.chars().all(|c| c.is_alphanumeric() || c == '_')
-        }) else {
+        let Some(entity) = entity_of(&statement) else {
             continue;
         };
         let mut associations = Vec::new();
@@ -131,13 +118,13 @@ fn instantiations(architecture: &SyntaxNode) -> Vec<Instance> {
                 let formal = association
                     .children()
                     .find(|c| c.kind() == NodeKind::Formal)
-                    .map(|formal| lower(text_of(&formal).trim_end_matches("=>")));
+                    .map(|formal| trimmed(text_of(&formal).trim_end_matches("=>")));
                 let actual: String = association
                     .children()
                     .filter(|c| c.kind() != NodeKind::Formal)
                     .map(|c| text_of(&c))
                     .collect();
-                associations.push((formal, lower(&actual)));
+                associations.push((formal, trimmed(&actual)));
             }
         }
         out.push(Instance {
@@ -166,8 +153,7 @@ pub fn undriven(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec<Findin
                     continue;
                 }
                 for token in all_tokens(&declaration) {
-                    let text =
-                        String::from_utf8_lossy(token.text().as_bytes()).to_ascii_lowercase();
+                    let text = lower(&token);
                     if text == ":" {
                         break;
                     }

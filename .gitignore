@@ -6,3 +6,6 @@ __pycache__/
 .compare/
 fuzz/target
 fuzz/Cargo.lock
+
+# Agent worktrees, created per task; never part of the repository.
+.claude/

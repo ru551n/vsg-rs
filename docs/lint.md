@@ -1,17 +1,23 @@
 # The lint layer
 
-vsg-rs has two layers of rules, chosen with `--check`:
+vsg-rs has two layers of rules. The root command is VSG's — same arguments, same reports, style
+rules only — and `vsg-rs lint` runs the other one.
 
-| Layer | What it checks | Default |
+| Layer | What it checks | How to run it |
 |---|---|---|
-| `style` | VSG's ~972 rules and the formatter. Syntactic, per file. | on |
-| `lint` | Code that is legal but probably wrong: sensitivity lists, unused declarations, latches, multiple drivers, types. Needs names resolved. | off |
+| style | VSG's ~972 rules and the formatter. Syntactic, per file. | `vsg-rs ...` (the root command) |
+| lint | Code that is legal but probably wrong: sensitivity lists, unused declarations, latches, multiple drivers, types. Needs names resolved. | `vsg-rs lint ...` |
 
 ```sh
-vsg-rs --recursive src                       # style only, byte-identical to VSG
-vsg-rs --recursive src --check style,lint    # both
-vsg-rs --recursive src --check lint          # lint only
+vsg-rs --recursive src                          # style, byte-identical to VSG
+vsg-rs --recursive src --fix                    # and fix what is fixable
+vsg-rs lint --recursive src                     # the lint layer
+vsg-rs lint --recursive src --check style,lint  # both in one run
 ```
+
+`lint` is a subcommand only when it is the first argument and no file of that name exists, so a
+file called `lint` still wins and every VSG command line keeps working unchanged. Underneath it
+is `--check`, which takes the layers as a comma-separated list.
 
 `--fix` belongs to `style` and is refused without it: a lint finding never carries a fix, because
 fixing one would change what the design does.

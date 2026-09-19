@@ -236,8 +236,9 @@ struct Args {
     /// Print how many violations each rule reports, over all inputs (vsg-rs extension)
     #[arg(long)]
     statistics: bool,
-    /// Which layers to run: `style` (VSG's rules, the default) and `lint` (rules that need name
-    /// resolution). Comma separated (vsg-rs extension)
+    /// Which layers to run, comma separated: `style` (VSG's rules, the default) and `lint`
+    /// (rules that need name resolution). `vsg-rs lint ...` is the short way to say
+    /// `--check lint` (vsg-rs extension)
     #[arg(long = "check", value_name = "LAYERS", default_value = "style")]
     check: String,
     /// Accept the violations listed in this file, with their reasons (vsg-rs extension)
@@ -277,21 +278,48 @@ fn line_range(src: &[u8], (first, last): (usize, usize)) -> std::ops::Range<usiz
 }
 
 /// VSG's multi-letter single-dash options, as long options.
+/// The root command is VSG's: same arguments, same reports, style rules only. `vsg-rs lint ...`
+/// runs the lint layer instead, and is the same thing as `--check lint`.
+///
+/// VSG has no subcommands and its positional arguments are file names, so the word is only taken
+/// as a subcommand when it is the first argument and no file of that name exists; a file called
+/// `lint` still wins. An explicit `--check` is left alone, so `vsg-rs lint --check style,lint`
+/// runs both layers.
+fn lint_subcommand(args: &mut Vec<String>) {
+    let Some(first) = args.get(1) else {
+        return;
+    };
+    if first != "lint" || Path::new(first).exists() {
+        return;
+    }
+    args.remove(1);
+    if !args
+        .iter()
+        .any(|a| a == "--check" || a.starts_with("--check="))
+    {
+        args.insert(1, "--check".to_owned());
+        args.insert(2, "lint".to_owned());
+    }
+}
+
 fn normalize(args: impl Iterator<Item = String>) -> Vec<String> {
-    args.map(|a| {
-        let long = match a.as_str() {
-            "-lr" => "--local_rules",
-            "-fp" => "--fix_phase",
-            "-js" => "--json",
-            "-of" => "--output_format",
-            "-oc" => "--output_configuration",
-            "-rc" => "--rule_configuration",
-            "-ap" => "--all_phases",
-            _ => return a,
-        };
-        long.to_owned()
-    })
-    .collect()
+    let mut args: Vec<String> = args
+        .map(|a| {
+            let long = match a.as_str() {
+                "-lr" => "--local_rules",
+                "-fp" => "--fix_phase",
+                "-js" => "--json",
+                "-of" => "--output_format",
+                "-oc" => "--output_configuration",
+                "-rc" => "--rule_configuration",
+                "-ap" => "--all_phases",
+                _ => return a,
+            };
+            long.to_owned()
+        })
+        .collect();
+    lint_subcommand(&mut args);
+    args
 }
 
 fn usage_error(message: &str) -> ExitCode {

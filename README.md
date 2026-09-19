@@ -217,7 +217,7 @@ The wheels install the `vsg-rs` executable. `python -m vsg_rs ...` runs it too, 
 * [Migrating from VSG](docs/migrating-from-vsg.md) (including pre-commit and CI)
 * [GitHub Action](docs/github-action.md) and code scanning, [GitLab CI](docs/gitlab-ci.md)
 <<<<<<< HEAD
-* [The lint layer](docs/lint.md): `--check lint`, rules that need names resolved
+* [The lint layer](docs/lint.md): `vsg-rs lint`, rules that need names resolved
 =======
 * [Waivers](docs/waivers.md): accepting known violations so only new ones are reported
 >>>>>>> origin/main

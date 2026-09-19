@@ -924,7 +924,16 @@ impl Config {
         // The lint layer's rules are not VSG's, so they have no entry in its defaults: they are
         // enabled and error by default, and the configuration layers over that as usual.
         if id.starts_with("lint_") {
-            return Some(self.layered(id, &["lint"], true, Severity::Error, BTreeMap::new()));
+            // Most lint rules are on once the layer runs; the ones about house style are a
+            // project's choice and start off.
+            let on_by_default = !matches!(id, "lint_602" | "lint_603");
+            return Some(self.layered(
+                id,
+                &["lint"],
+                on_by_default,
+                Severity::Error,
+                BTreeMap::new(),
+            ));
         }
         let defaults = crate::vsg_defaults::defaults()["rule"].get(id)?;
         let mut options: BTreeMap<String, Value> = BTreeMap::new();

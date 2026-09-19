@@ -102,8 +102,15 @@ work.files = ['src/**/*.vhd']
 osvvm.files = ['osvvm/**/*.vhd']
 ```
 
-**Without that file, only `lint_001` to `lint_003`, `lint_600` and `lint_601` are reported**, and
-the rest are held back with a count. That is deliberate: with no map every name from another
+**Without that file, only `lint_001` to `lint_003`, `lint_600` and `lint_601` are reported.** A
+run without one says so every time, whether or not it found anything:
+
+```
+WARNING: no vhdl_ls.toml found, so 53 of 58 lint rules did not run. They need to know
+         which library each file is in; see docs/lint.md
+```
+
+A clean report from five rules must not be mistaken for a clean report from all of them. That is deliberate: with no map every name from another
 library is unresolved, and the rules that depend on resolution then produce nonsense. On 50 VUnit
 files the difference is 9968 unresolved-name findings and 623 knock-on argument errors, against
 none that were real.

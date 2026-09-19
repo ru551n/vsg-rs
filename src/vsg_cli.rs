@@ -1496,10 +1496,22 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 for r in &mut results {
                     r.violations.sort_by_key(|d| (d.line, d.column));
                 }
-                if held_back > 0 {
+                if !mapped {
+                    // Say this whether or not anything was held back: a clean report from five
+                    // rules must not look like a clean report from all of them.
+                    let all = crate::lint::rules().count() + crate::design::RULES.len();
+                    let inactive = crate::lint::rules()
+                        .filter(|(id, _)| !crate::lint::needs_no_library_map(id))
+                        .count();
+                    let findings = if held_back > 0 {
+                        format!(", and {held_back} finding(s) of theirs were held back")
+                    } else {
+                        String::new()
+                    };
                     eprintln!(
-                        "WARNING: {held_back} lint finding(s) need to know the project's \
-                         libraries; write a vhdl_ls.toml to get them (see docs/lint.md)"
+                        "WARNING: no vhdl_ls.toml found, so {inactive} of {all} lint rules did \
+                         not run{findings}. They need to know which library each file is in; \
+                         see docs/lint.md"
                     );
                 }
                 if !analysis.unanalysed.is_empty() {

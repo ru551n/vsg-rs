@@ -103,6 +103,83 @@ fn assignments(node: &SyntaxNode) -> Vec<(String, usize)> {
     out
 }
 
+/// One accepted prefix or suffix. Plain text matches itself; `*` and `?` are wildcards, so
+/// `_p?` accepts `_p1` through `_p9`; and `re:` takes a regular expression for anything finer,
+/// such as `re:_p[0-9]+`.
+pub(crate) struct Affix {
+    text: String,
+    pattern: Option<regex::Regex>,
+}
+
+impl Affix {
+    pub(crate) fn new(text: &str) -> Result<Affix, String> {
+        let pattern = match text.strip_prefix("re:") {
+            Some(expression) => Some(
+                regex::Regex::new(expression)
+                    .map_err(|e| format!("`{text}` is not a regular expression: {e}"))?,
+            ),
+            None => None,
+        };
+        Ok(Affix {
+            text: text.to_owned(),
+            pattern,
+        })
+    }
+
+    fn matches(&self, name: &str, as_prefix: bool) -> bool {
+        // Anchored at the start for a prefix, at the end for a suffix.
+        if let Some(pattern) = &self.pattern {
+            return pattern.find_iter(name).any(|found| {
+                if as_prefix {
+                    found.start() == 0
+                } else {
+                    found.end() == name.len()
+                }
+            });
+        }
+        let glob = if as_prefix {
+            format!("{}*", self.text)
+        } else {
+            format!("*{}", self.text)
+        };
+        vsg_rs::config::glob(glob.as_bytes(), name.as_bytes())
+    }
+}
+
+/// How registered signals are expected to be named: `lint_602` for the suffix and `lint_603` for
+/// the prefix, each off unless its list is set, so a project can ask for either or both.
+pub(crate) struct Naming {
+    /// `lint_603`.
+    pub(crate) prefixes: Vec<Affix>,
+    /// `lint_602`.
+    pub(crate) suffixes: Vec<Affix>,
+}
+
+impl Naming {
+    #[cfg(test)]
+    fn none() -> Naming {
+        Naming {
+            prefixes: Vec::new(),
+            suffixes: Vec::new(),
+        }
+    }
+
+    fn quoted(list: &[Affix]) -> String {
+        let items: Vec<String> = list.iter().map(|a| format!("'{}'", a.text)).collect();
+        match items.split_last() {
+            Some((tail, [])) => tail.clone(),
+            Some((tail, head)) => format!("{} or {tail}", head.join(", ")),
+            None => String::new(),
+        }
+    }
+}
+
+/// Whether a process is clocked: it tests a clock edge, so what it assigns becomes a register.
+fn is_clocked(process: &SyntaxNode) -> bool {
+    let text = text_of(process);
+    text.contains("rising_edge(") || text.contains("falling_edge(") || text.contains("'event")
+}
+
 /// Whether a process describes something other than combinational logic, and so cannot infer a
 /// latch: a clocked process (an edge test, the shape `vhdl_lang` uses too), or one that suspends
 /// on `wait`, which is how testbenches are written and is not synthesisable logic at all.
@@ -426,7 +503,7 @@ fn targets_overlap(left: &str, right: &str) -> bool {
     true
 }
 
-pub(crate) fn check(parsed: &Parsed, file: &std::path::Path) -> Vec<Finding> {
+pub(crate) fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) -> Vec<Finding> {
     let mut findings = Vec::new();
     let at = |offset: usize| parsed.line_col(offset);
 
@@ -517,6 +594,44 @@ pub(crate) fn check(parsed: &Parsed, file: &std::path::Path) -> Vec<Finding> {
             });
         }
 
+        // lint_602: a signal a clocked process assigns becomes a register, and a project may
+        // want to see that in its name.
+        for process in find(&architecture, NodeKind::ProcessStatement) {
+            if !is_clocked(&process) {
+                continue;
+            }
+            let mut seen: BTreeSet<String> = BTreeSet::new();
+            for (target, offset) in assignments(&process) {
+                let name = path(&target).0;
+                if name.is_empty() || !seen.insert(name.clone()) {
+                    continue;
+                }
+                let (line, column) = at(offset);
+                let mut complain = |rule, what: &str, accepted: &[Affix]| {
+                    findings.push(Finding {
+                        file: file.to_path_buf(),
+                        rule,
+                        line,
+                        column,
+                        message: format!(
+                            "Registered signal '{name}' does not have the {what} {}",
+                            Naming::quoted(accepted)
+                        ),
+                    });
+                };
+                if !naming.suffixes.is_empty()
+                    && !naming.suffixes.iter().any(|s| s.matches(&name, false))
+                {
+                    complain("lint_602", "suffix", &naming.suffixes);
+                }
+                if !naming.prefixes.is_empty()
+                    && !naming.prefixes.iter().any(|p| p.matches(&name, true))
+                {
+                    complain("lint_603", "prefix", &naming.prefixes);
+                }
+            }
+        }
+
         // lint_600: a combinational process that does not assign on every path.
         for process in find(&architecture, NodeKind::ProcessStatement) {
             if is_not_combinational(&process) {
@@ -551,6 +666,16 @@ pub(crate) const RULES: &[(&str, &str)] = &[
         "lint_601",
         "A signal is assigned by more than one concurrent statement.",
     ),
+    (
+        "lint_602",
+        "A signal assigned by a clocked process does not have a register suffix (off by \
+         default; set `suffixes`).",
+    ),
+    (
+        "lint_603",
+        "A signal assigned by a clocked process does not have a register prefix (off by \
+         default; set `prefixes`).",
+    ),
 ];
 
 #[cfg(test)]
@@ -560,10 +685,17 @@ mod tests {
     fn check_source(text: &str) -> Vec<(&'static str, usize)> {
         let parsed = Parsed::new(text.as_bytes().to_vec());
         assert!(parsed.syntax_errors().is_empty(), "test source must parse");
-        check(&parsed, std::path::Path::new("dut.vhd"))
-            .into_iter()
-            .map(|f| (f.rule, f.line))
-            .collect()
+        check(
+            &parsed,
+            std::path::Path::new("dut.vhd"),
+            &Naming {
+                prefixes: Vec::new(),
+                suffixes: Vec::new(),
+            },
+        )
+        .into_iter()
+        .map(|f| (f.rule, f.line))
+        .collect()
     }
 
     const PREAMBLE: &str = "entity dut is\nend entity;\n\narchitecture rtl of dut is\n  \
@@ -746,6 +878,103 @@ mod tests {
         assert!(
             found.iter().any(|(rule, _)| *rule == "lint_601"),
             "got {found:?}"
+        );
+    }
+
+    fn naming(prefixes: &[&str], suffixes: &[&str]) -> Naming {
+        let affixes = |list: &[&str]| list.iter().map(|a| Affix::new(a).expect("affix")).collect();
+        Naming {
+            prefixes: affixes(prefixes),
+            suffixes: affixes(suffixes),
+        }
+    }
+
+    fn check_named(source: &str, naming: &Naming) -> Vec<(&'static str, String)> {
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        assert!(parsed.syntax_errors().is_empty(), "test source must parse");
+        check(&parsed, std::path::Path::new("dut.vhd"), naming)
+            .into_iter()
+            .map(|f| (f.rule, f.message))
+            .collect()
+    }
+
+    const CLOCKED: &str = "entity dut is\nend entity;\n\narchitecture rtl of dut is\n  \
+                           signal clk, d, state, count_q : bit;\nbegin\n  \
+                           p : process (clk) is\n  begin\n    if rising_edge(clk) then\n      \
+                           state <= d;\n      count_q <= d;\n    end if;\n  end process;\n\
+                           end architecture;\n";
+
+    #[test]
+    fn registered_signals_are_only_checked_when_asked() {
+        let found = check_named(CLOCKED, &Naming::none());
+        assert!(
+            !found.iter().any(|(rule, _)| *rule == "lint_602"),
+            "nothing configured, nothing to say: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_register_without_the_suffix_is_reported() {
+        let found = check_named(CLOCKED, &naming(&[], &["_q", "_r"]));
+        let reported: Vec<&String> = found
+            .iter()
+            .filter(|(rule, _)| *rule == "lint_602")
+            .map(|(_, message)| message)
+            .collect();
+        assert_eq!(reported.len(), 1, "{found:?}");
+        assert!(reported[0].contains("'state'"), "{reported:?}");
+        assert!(reported[0].contains("'_q' or '_r'"), "{reported:?}");
+    }
+
+    #[test]
+    fn a_prefix_works_as_well_as_a_suffix() {
+        let found = check_named(CLOCKED, &naming(&["r_"], &[]));
+        assert_eq!(
+            found.iter().filter(|(rule, _)| *rule == "lint_603").count(),
+            2,
+            "neither name has the prefix: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_combinational_signal_is_not_a_register() {
+        let found = check_named(
+            &format!(
+                "{PREAMBLE}  p : process (a) is\n  begin\n    c <= a;\n  \
+                      end process;\nend architecture;\n"
+            ),
+            &naming(&[], &["_q"]),
+        );
+        assert!(
+            !found.iter().any(|(rule, _)| *rule == "lint_602"),
+            "no clock, no register: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_suffix_can_be_a_pattern() {
+        // Pipeline stages: `_p1`, `_p2`, ... without listing each one.
+        let source = "entity dut is\nend entity;\n\narchitecture rtl of dut is\n  \
+                      signal clk, d, a_p1, b_p12, c_comb : bit;\nbegin\n  \
+                      p : process (clk) is\n  begin\n    if rising_edge(clk) then\n      \
+                      a_p1 <= d;\n      b_p12 <= d;\n      c_comb <= d;\n    end if;\n  \
+                      end process;\nend architecture;\n";
+        for pattern in ["_p*", "re:_p[0-9]+"] {
+            let found = check_named(source, &naming(&[], &[pattern]));
+            let reported: Vec<&String> = found
+                .iter()
+                .filter(|(rule, _)| *rule == "lint_602")
+                .map(|(_, message)| message)
+                .collect();
+            assert_eq!(reported.len(), 1, "{pattern}: {found:?}");
+            assert!(reported[0].contains("'c_comb'"), "{pattern}: {reported:?}");
+        }
+        // A single wildcard character accepts one digit only.
+        let found = check_named(source, &naming(&[], &["_p?"]));
+        assert_eq!(
+            found.iter().filter(|(rule, _)| *rule == "lint_602").count(),
+            2,
+            "`_p?` accepts _p1 but not _p12: {found:?}"
         );
     }
 

@@ -149,6 +149,27 @@ none that were real.
 | `lint_600` | A combinational process does not assign a signal on every path: a latch |
 | `lint_601` | A signal is assigned by more than one concurrent statement |
 
+### Naming registers (off by default)
+
+A signal a clocked process assigns becomes a register, and many projects want to see that in its
+name. Two rules, each off until you set it:
+
+```yaml
+rule:
+  lint_602:                                  # the suffix
+    disable: false
+    suffixes: ['_q', '_reg', 're:_p[0-9]+']  # `_p1`, `_p2`, ... without listing them
+  lint_603:                                  # the prefix
+    disable: false
+    prefixes: ['r_']
+```
+
+Enabling either without a list of its own means the usual convention for it: `_q`, `_r` or
+`_reg` for the suffix, `r_` for the prefix. Entries are plain text, or a glob (`_p?` accepts one
+character after `_p`, `_p*` any number), or `re:` followed by a regular expression when the glob
+is too blunt. Only signals assigned under a clock edge are checked, so combinational signals and
+testbench code are never named at.
+
 **With a library map** — `lint_004` (unused declarations), `lint_005` and `lint_006` (a needless
 `work` library, an unused context), `lint_1xx` (names and declarations: unresolved, duplicate,
 circular dependency), `lint_2xx` (types and expressions: type and dimension mismatches,

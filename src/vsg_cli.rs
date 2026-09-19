@@ -327,6 +327,31 @@ fn normalize(args: impl Iterator<Item = String>) -> Vec<String> {
     args
 }
 
+/// What `lint_602` (suffix) and `lint_603` (prefix) accept. Either rule enabled without a list
+/// of its own means the usual convention for it.
+fn naming_rules(cfg: &Config) -> Result<crate::design::Naming, String> {
+    let affixes = |rule: &str, key: &str, fallback: &[&str]| -> Result<Vec<_>, String> {
+        // A rule that is off contributes nothing, which is what an empty list means.
+        let Some(settings) = cfg.rule_by_id(rule).filter(|s| s.enabled) else {
+            return Ok(Vec::new());
+        };
+        let configured = settings.option_list(key);
+        let listed: Vec<String> = if configured.is_empty() {
+            fallback.iter().map(|s| (*s).to_owned()).collect()
+        } else {
+            configured.iter().map(|s| s.to_ascii_lowercase()).collect()
+        };
+        listed
+            .iter()
+            .map(|affix| crate::design::Affix::new(affix).map_err(|e| format!("{rule}: {e}")))
+            .collect()
+    };
+    Ok(crate::design::Naming {
+        suffixes: affixes("lint_602", "suffixes", &["_q", "_r", "_reg"])?,
+        prefixes: affixes("lint_603", "prefixes", &["r_"])?,
+    })
+}
+
 fn usage_error(message: &str) -> ExitCode {
     let mut cmd = Args::command();
     eprintln!("{}", cmd.render_usage());
@@ -1458,7 +1483,15 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 kinds.insert(file.clone(), reason);
             }
             let cfg = lint_cfg.for_kind(if reason.is_some() { "testbench" } else { "rtl" });
-            for f in crate::design::check(&parsed, file) {
+            // How this file's kind wants registers named (`lint_602`, off unless configured).
+            let naming = match naming_rules(&cfg) {
+                Ok(naming) => naming,
+                Err(e) => {
+                    eprintln!("ERROR: {e}");
+                    return ExitCode::from(1);
+                }
+            };
+            for f in crate::design::check(&parsed, file, &naming) {
                 let settings = cfg.rule_by_id(f.rule);
                 if settings.as_ref().is_some_and(|s| !s.enabled) {
                     continue;

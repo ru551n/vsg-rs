@@ -233,6 +233,21 @@ mod tests {
     }
 
     #[test]
+    fn a_synchroniser_is_named_by_its_entity_and_nothing_else() {
+        // The name matched against `synchronizers` is the entity's, not the whole statement's
+        // text. It used to be taken from the statement, so it carried the port map with it and
+        // only a pattern ending in `*` ever matched; an exact name silently did not.
+        let body = "  u : entity work.cdc_bit_sync\n    port map (\n      d => a_data,\n      \
+                    q => b_sync\n    );\n\n  b : process (clk_b) is\n  begin\n    \
+                    if rising_edge(clk_b) then\n      y <= a_data and b_data;\n    end if;\n  \
+                    end process b;\n";
+        assert!(
+            check_source(&two_clocks(body), &["cdc_bit_sync"]).is_empty(),
+            "an exact entity name must match"
+        );
+    }
+
+    #[test]
     fn a_named_synchroniser_makes_it_safe() {
         let body = "  u : entity work.cdc_bit_sync\n    port map (\n      d => a_data,\n      \
                     q => b_sync\n    );\n\n  b : process (clk_b) is\n  begin\n    \

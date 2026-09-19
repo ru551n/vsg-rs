@@ -854,8 +854,10 @@ impl Config {
         // already agrees on, which is how a project pads its interface lists on purpose.
         let compact = |id: &str| {
             self.rule_by_id(id).is_none_or(|s| {
-                s.option_str("compact_alignment")
-                    .map_or_else(|| s.option_bool("compact_alignment").unwrap_or(true), |v| v == "yes")
+                s.option_str("compact_alignment").map_or_else(
+                    || s.option_bool("compact_alignment").unwrap_or(true),
+                    |v| v == "yes",
+                )
             })
         };
         align.interface_assignments = enabled("entity_018");

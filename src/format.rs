@@ -1169,7 +1169,9 @@ impl<'a> Builder<'a> {
             // One space is printed anyway, so the column that reproduces the source spacing is
             // one less than the distance from the start of the element to the separator.
             let first = targets[0].2.saturating_sub(1);
-            if targets.iter().all(|(_, _, gap)| gap.saturating_sub(1) == first)
+            if targets
+                .iter()
+                .all(|(_, _, gap)| gap.saturating_sub(1) == first)
                 && first >= max
                 && first <= self.cfg.width / 2
             {
@@ -1201,10 +1203,7 @@ impl<'a> Builder<'a> {
             .filter_map(vhdl_syntax::syntax::child::Child::as_node)
             .filter(|n| n.kind() == N::InterfaceObjectDeclaration)
         {
-            let Some(value) = n
-                .children()
-                .find(|c| c.kind() == N::InitialValue)
-            else {
+            let Some(value) = n.children().find(|c| c.kind() == N::InitialValue) else {
                 continue;
             };
             let assign = value.first_token();

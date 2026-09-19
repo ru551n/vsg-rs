@@ -142,6 +142,25 @@ that a reported cycle is a real one: an assignment to part of an object (`q(0) <
 elements), anything through an instance (whose entity may register the path), an attribute of a
 signal (`q'length` is a property, not a value), and an assignment with an `after` delay.
 
+### Clock domain crossings
+
+`lint_700` gives each register the clock its process is edge-triggered on, and reports a register
+from one domain used in logic on another — the shape that goes metastable. A crossing that is
+only *captured* is accepted: `flop <= other_domain_signal;` on its own, with nothing else in the
+statement, is a synchroniser's first stage. So is anything touching an entity you name:
+
+```yaml
+vsg_rs:
+  synchronizers:
+    - cdc_bit_sync
+    - xpm_cdc_*
+```
+
+It under-reports on purpose. A single-stage capture is accepted although two stages are the usual
+requirement, because a false accusation about a correct synchroniser costs more than the finding
+is worth. An architecture with one clock is skipped entirely, as is a signal registered on two
+clocks — there is no crossing there anyone can reason about.
+
 ### Wiring
 
 `lint_730` needs to know what an instance does to the signals connected to it, so the run first
@@ -189,6 +208,7 @@ none that were real.
 | `lint_003` | An item that may not appear in a sensitivity list |
 | `lint_600` | A combinational process does not assign a signal on every path: a latch |
 | `lint_601` | A signal is assigned by more than one concurrent statement |
+| `lint_700` | A register from one clock domain is used in logic on another, unsynchronised |
 | `lint_710` | A state of an enumerated state machine is never entered |
 | `lint_711` | A state of an enumerated state machine has no exit |
 | `lint_720` | A signal depends on itself through combinational logic, with no register in the loop |

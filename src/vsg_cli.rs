@@ -921,11 +921,21 @@ fn sarif_report(results: &[FileResult]) -> String {
 }
 
 /// `--explain RULE`: what one rule is, in the words vsg-rs has for it.
+/// Every rule of the lint layer: the front end's own, and the structural ones vsg-rs adds.
+/// One list, so `--list_rules` and `--explain` can never disagree about what exists.
+fn lint_rules() -> impl Iterator<Item = (&'static str, &'static str)> {
+    crate::lint::rules()
+        .chain(crate::design::RULES.iter().copied())
+        .chain(crate::elaborate::RULES.iter().copied())
+        .chain(crate::fsm::RULES.iter().copied())
+        .chain(crate::combinational::RULES.iter().copied())
+        .chain(crate::clockdomain::RULES.iter().copied())
+}
+
 fn explain_rule(rule: &str) -> ExitCode {
     let mut out = io::stdout().lock();
     let kind = kind_of(rule);
-    let described = crate::lint::rules()
-        .chain(crate::design::RULES.iter().copied())
+    let described = lint_rules()
         .find(|(id, _)| *id == rule)
         .map(|(_, description)| description.to_owned())
         .or_else(|| rules::info(rule).map(|info| info.description.to_owned()))
@@ -978,12 +988,7 @@ fn list_rules() -> ExitCode {
         };
         let _ = writeln!(out, "{id:42} {status}");
     }
-    for (id, description) in crate::lint::rules()
-        .chain(crate::design::RULES.iter().copied())
-        .chain(crate::elaborate::RULES.iter().copied())
-        .chain(crate::fsm::RULES.iter().copied())
-        .chain(crate::combinational::RULES.iter().copied())
-    {
+    for (id, description) in lint_rules() {
         let _ = writeln!(out, "{id:42} lint (--check lint): {description}");
     }
     ExitCode::SUCCESS
@@ -1612,11 +1617,13 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             let wiring = crate::elaborate::undriven(&parsed, file, &entities);
             let machines = crate::fsm::check(&parsed, file);
             let loops = crate::combinational::check(&parsed, file);
+            let crossings = crate::clockdomain::check(&parsed, file, &cfg.synchronizers);
             for f in crate::design::check(&parsed, file, &naming)
                 .into_iter()
                 .chain(wiring)
                 .chain(machines)
                 .chain(loops)
+                .chain(crossings)
             {
                 let settings = cfg.rule_by_id(f.rule);
                 if settings.as_ref().is_some_and(|s| !s.enabled) {

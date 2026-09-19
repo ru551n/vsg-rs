@@ -176,6 +176,8 @@ pub struct Config {
     pub testbench_files: Vec<String>,
     /// `vsg_rs: testbench_libraries`: libraries (from `vhdl_ls.toml`) that hold testbenches.
     pub testbench_libraries: Vec<String>,
+    /// `vsg_rs: synchronizers`: entity names (globs) that make a clock domain crossing safe.
+    pub synchronizers: Vec<String>,
     /// `vsg_rs: rtl` / `vsg_rs: testbench`: a `rule` block for each kind of file.
     kind_rules: BTreeMap<String, Value>,
     /// `file_list`: (path or glob pattern, the configuration file that lists it).
@@ -407,6 +409,16 @@ impl Config {
                         .as_sequence()
                         .ok_or("`testbench_libraries` must be a list of library names")?;
                     self.testbench_libraries = list
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|name| name.trim().to_ascii_lowercase())
+                        .collect();
+                }
+                "synchronizers" => {
+                    let list = value
+                        .as_sequence()
+                        .ok_or("`synchronizers` must be a list of entity names")?;
+                    self.synchronizers = list
                         .iter()
                         .filter_map(|v| v.as_str())
                         .map(|name| name.trim().to_ascii_lowercase())

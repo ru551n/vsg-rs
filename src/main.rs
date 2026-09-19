@@ -2,6 +2,7 @@
 
 use std::process::ExitCode;
 
+mod clockdomain;
 mod combinational;
 mod design;
 mod elaborate;

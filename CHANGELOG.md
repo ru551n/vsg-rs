@@ -7,6 +7,9 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 
 **Targets VSG 3.35.**
 
+* `lint_700` reports an unsynchronised clock domain crossing: a register from one clock used in
+  logic on another. A plain capture into a flop is read as a synchroniser's first stage, and
+  `vsg_rs: synchronizers` names the entities a crossing may safely pass through.
 * `lint_710` and `lint_711` read enumerated state machines out of the source and report a state
   nothing can enter and a state nothing can leave — the two checks a netlist is usually thought
   necessary for.

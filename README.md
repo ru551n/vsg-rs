@@ -11,7 +11,7 @@ what it reports, and adds a lint layer that VSG has no equivalent of.
 
 **Status: beta.** The style layer implements VSG 3.35's rule set and is tested against more than
 11,000 real-world files; expect layout changes before 1.0. The lint layer (`vsg-rs lint`) is
-newer: 58 rules today, and the set will grow.
+newer: 65 rules today, and the set will grow.
 
 ## Install
 
@@ -99,7 +99,8 @@ a reason, and never affect the exit code.
 | `--list_rules`, `--statistics` | what each rule is, and how often each fired |
 
 Configuration keys vsg-rs adds live under a `vsg_rs:` block: `reflow_comments`,
-`testbench_files`, `testbench_libraries`, and a `rule:` block per kind of file.
+`testbench_files`, `testbench_libraries`, `synchronizers`, and a `rule:` block per kind of
+file.
 
 ### CI
 

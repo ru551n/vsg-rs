@@ -7,6 +7,33 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 
 **Targets VSG 3.35.**
 
+* **A language server.** `vsg-rs lsp` serves diagnostics, quick fixes and formatting over LSP,
+  from the same library the command line uses: the same parser, formatter, analysis and
+  configuration, so an editor and CI cannot disagree. It is deliberately narrow and does not
+  advertise completion, hover, definition, references, rename or symbols — those belong to a VHDL
+  language server such as `vhdl_ls`, which it is meant to run beside. Diagnostics carry their
+  related locations, quick fixes come from the fix a finding already holds, and `source.fixAll`
+  applies what `--fix` would. See [the language server](docs/lsp.md).
+* **A VS Code extension**, in `editors/vscode`, which launches the server and nothing else. It
+  ships the server for its platform, built by the same release, so there is no version to keep in
+  step. Rules and layout still come from the project's own configuration file rather than from
+  editor settings.
+* **Analysis runs on buffers, not only files.** `--stdin --check lint` analyses what it is given,
+  in the context of the project its path belongs to, which is what lets an unsaved file be checked
+  at all. The analysis layer moved into the library (`vsg_rs::analysis`), so anything that is not
+  the command line can use it.
+* **Findings carry their other locations as data.** A multiply driven signal points at each
+  driver and a combinational loop at each signal on it, rather than listing line numbers inside a
+  sentence. The console shows them under the finding, SARIF carries them as `relatedLocations`,
+  and SARIF now also carries safe fixes as `fixes`.
+* **`--check lint` is about five times faster.** The style layer no longer runs when only lint was
+  asked for, the cross-file index is built once for whichever layers need it, and the lint layer
+  runs in the same worker processes the style layer uses. On VUnit's 863 files: 3.1s to 0.6s.
+* `lint_700` (clock domain crossings) is now **off by default**. It infers which signal is a
+  clock rather than deriving it, so it cannot point at the evidence the other rules can; enable it
+  with `rule: lint_700: disable: false`.
+* `lint_006` described `UnassociatedContext` as "a context declared but never used". It reports a
+  context clause that is not attached to any design unit, which is a different thing.
 * `--sonarqube FILE` writes SonarQube's generic issue JSON. SonarQube reads SARIF too, but files
   every SARIF issue as a vulnerability; this format carries the type, so the lint layer arrives as
   a bug and style as a code smell. Severity separates what needs a person from what does not: a

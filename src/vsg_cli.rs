@@ -432,7 +432,19 @@ fn lint_subcommand(args: &mut Vec<String>) {
     let Some(first) = args.get(1) else {
         return;
     };
-    if first != "lint" || Path::new(first).exists() {
+    if first != "lint" {
+        return;
+    }
+    if Path::new(first).exists() {
+        // A path wins, as it must: `vsg-rs lint` in a directory that happens to contain one
+        // called `lint` is asking about that directory. But the two readings do completely
+        // different things -- one checks the layer, the other checks the files with the style
+        // rules -- and silently picking the second is how a run comes to report nothing and
+        // look clean. open-logic has such a directory.
+        eprintln!(
+            "NOTE: 'lint' is a path here, so it was checked as one and the lint layer did not \
+             run. Use --check lint to select the layer."
+        );
         return;
     }
     args.remove(1);
@@ -2039,6 +2051,18 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         if design.entities.is_empty() && !args.stdin {
             design = vsg_rs::analysis::elaborate::design(&files);
         }
+        // Whether this index is the project or merely part of it. A `vhdl_ls.toml` says what
+        // the project's files are; the index covers it when nothing it names was left out. With
+        // no map there is nothing to compare against, so completeness cannot be claimed, and the
+        // rules that report something *missing* stay quiet rather than guess.
+        design.complete = {
+            let mapped = vsg_rs::analysis::lint::libraries_of_files();
+            let given: std::collections::BTreeSet<PathBuf> = files
+                .iter()
+                .map(|f| std::fs::canonicalize(f).unwrap_or_else(|_| f.clone()))
+                .collect();
+            !mapped.is_empty() && mapped.keys().all(|f| given.contains(f))
+        };
         // Why each file counts as a testbench, for `--debug`. Owned, because a worker sends it.
         let mut kinds: std::collections::BTreeMap<PathBuf, String> =
             std::collections::BTreeMap::new();

@@ -55,6 +55,14 @@ pub type Architectures = BTreeMap<String, BTreeSet<String>>;
 pub struct Design {
     pub entities: Entities,
     pub architectures: Architectures,
+    /// Whether this index covers the whole project, or only the files the run was handed.
+    ///
+    /// A rule that reports something *missing* needs this. Not finding an architecture in a set
+    /// of files is evidence about the files, and only evidence about the project when the two
+    /// are the same thing -- which they are not when a `vhdl_ls.toml` names files nobody passed
+    /// on the command line.
+    #[serde(default)]
+    pub complete: bool,
 }
 
 impl Design {
@@ -63,6 +71,9 @@ impl Design {
     /// several workers.
     #[must_use]
     pub fn merge(mut self, other: Design) -> Design {
+        // Two halves of a set are still only that set; whether it is the whole project is
+        // decided once, by whoever knows what the project is.
+        self.complete = false;
         for (name, ports) in other.entities {
             match self.entities.entry(name) {
                 std::collections::btree_map::Entry::Vacant(slot) => {
@@ -185,6 +196,9 @@ pub fn design(files: &[PathBuf]) -> Design {
     Design {
         entities: out,
         architectures,
+        // One pass over a list of files knows nothing about what else the project holds. The
+        // caller that knows says so.
+        complete: false,
     }
 }
 
@@ -447,6 +461,12 @@ pub fn interfaces(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec<Find
 #[must_use]
 pub fn configurations(parsed: &Parsed, file: &Path, design: &Design) -> Vec<Finding> {
     let mut findings = Vec::new();
+    // Every finding here is "this architecture is not declared". That is a claim about the
+    // project, and a set of files that is not the project cannot support it: the architecture
+    // may be in a file the run was not handed. Say nothing rather than something false.
+    if !design.complete {
+        return findings;
+    }
     let known = |entity: &str, architecture: &String| -> bool {
         design
             .architectures
@@ -666,8 +686,10 @@ mod tests {
         let here = dir.path().join("cfg.vhd");
         std::fs::write(&other, entity).expect("write");
         std::fs::write(&here, source).expect("write");
-        // The design pass sees every file of the run, the configuration's own included.
-        let known = design(&[other, here]);
+        // The design pass sees every file of the run, the configuration's own included, and
+        // these two files are the whole project -- which is what lets the rule speak at all.
+        let mut known = design(&[other, here]);
+        known.complete = true;
         let parsed = Parsed::new(source.as_bytes().to_vec());
         assert!(parsed.syntax_errors().is_empty(), "test source must parse");
         configurations(&parsed, Path::new("cfg.vhd"), &known)

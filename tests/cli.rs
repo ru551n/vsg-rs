@@ -9,7 +9,18 @@ const FORMATTED: &str = "entity e is\n  port (\n    a : in    bit\n  );\nend ent
 const MALFORMED: &str = "entity e is port (a : in bit; end;\n";
 
 fn vsg(args: &[&str], stdin: &str) -> Output {
+    vsg_in(
+        &std::env::current_dir().expect("a working directory"),
+        args,
+        stdin,
+    )
+}
+
+/// The same, from a given directory. The library map is found next to the working directory, as
+/// `vhdl_ls` finds it, so a test about a project has to stand in one.
+fn vsg_in(dir: &Path, args: &[&str], stdin: &str) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_vsg-rs"))
+        .current_dir(dir)
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -843,4 +854,87 @@ fn list_rules_says_which_rules_a_default_run_uses() {
             .any(|l| l.starts_with("lint_712") && l.contains("advisory") && l.contains("[off]")),
         "lint_712: {out}"
     );
+}
+
+/// A project whose `dff` entity has architecture `rtl`, in three files, with a configuration
+/// binding `binding`. Returns (directory, every file, the configuration's file).
+fn configured_project(binding: &str) -> (tempfile::TempDir, Vec<PathBuf>, PathBuf) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("vhdl_ls.toml"),
+        "[libraries]\nmylib.files = [\"src/*.vhd\"]\n",
+    )
+    .expect("write config");
+    let entity = write(
+        &dir.path().join("src"),
+        "dff.vhd",
+        "entity dff is\n  port (d : in bit; q : out bit);\nend entity dff;\n",
+    );
+    let architecture = write(
+        &dir.path().join("src"),
+        "dff_rtl.vhd",
+        "architecture rtl of dff is\nbegin\n  q <= d;\nend architecture rtl;\n",
+    );
+    let top = write(
+        &dir.path().join("src"),
+        "tb.vhd",
+        &format!(
+            "entity tb is\nend entity tb;\n\narchitecture sim of tb is\n  component dff is\n    \
+             port (d : in bit; q : out bit);\n  end component dff;\n  signal a, b : bit;\n\
+             begin\n  i_dff : dff port map (d => a, q => b);\n  a <= '1';\n\
+             end architecture sim;\n\nconfiguration cfg of tb is\n  for sim\n    \
+             for i_dff : dff\n      {binding}\n    end for;\n  end for;\n\
+             end configuration cfg;\n"
+        ),
+    );
+    (dir, vec![entity, architecture, top.clone()], top)
+}
+
+#[test]
+fn a_configuration_is_judged_only_against_the_whole_project() {
+    // "Not in the files I was given" is not "not in the project". The architecture lives in a
+    // file the library map names and the command line did not.
+    let (dir, all, top) = configured_project("use entity work.dff(rtl);");
+    let lint_of = |files: &[PathBuf]| {
+        let mut args: Vec<String> = files
+            .iter()
+            .map(|f| f.to_string_lossy().into_owned())
+            .collect();
+        args.extend(["--check".to_owned(), "lint".to_owned()]);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = vsg_in(dir.path(), &args, "");
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    // The configuration alone: the architecture it names is nowhere in this run.
+    assert!(
+        !lint_of(std::slice::from_ref(&top)).contains("lint_751"),
+        "one file is not a project"
+    );
+    // Entity and configuration, architecture withheld.
+    assert!(
+        !lint_of(&[all[0].clone(), top.clone()]).contains("lint_751"),
+        "a subset is not a project"
+    );
+    // Everything: the binding is right and nothing is reported.
+    assert!(!lint_of(&all).contains("lint_751"), "the binding is good");
+
+    drop(dir);
+}
+
+#[test]
+fn a_configuration_naming_nothing_is_reported_once_the_project_is_whole() {
+    // The other half of the same contract: when the run does cover the project, absence is
+    // evidence, and the rule has to say so or it is worth nothing.
+    let (dir, all, _top) = configured_project("use entity work.dff(nosucharch);");
+    let mut args: Vec<String> = all
+        .iter()
+        .map(|f| f.to_string_lossy().into_owned())
+        .collect();
+    args.extend(["--check".to_owned(), "lint".to_owned()]);
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = String::from_utf8_lossy(&vsg_in(dir.path(), &args, "").stdout).into_owned();
+    assert!(out.contains("lint_751"), "{out}");
+    assert!(out.contains("nosucharch"), "{out}");
 }

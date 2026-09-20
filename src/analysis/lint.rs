@@ -9,10 +9,10 @@
 //! second phase rather than anything the formatter shares, and it runs once per invocation over
 //! the whole file set, because resolution needs the library rather than one file.
 //!
-//! Only `vhdl_lang`'s two linters are reported, as `lint_001` to `lint_004`. Its
-//! analysis diagnostics (unresolved names, type mismatches) are deliberately dropped for now:
-//! they are worth more but they flood the report when the library mapping is incomplete, which
-//! by default it is.
+//! Everything `vhdl_lang` reports is mapped, as `lint_001` to `lint_502`: its two optional
+//! linters and its analysis diagnostics alike. The ones that need the library map say nothing
+//! until the project has one, because an unresolved name produces thousands of knock-on
+//! findings when the mapping is incomplete -- see [`needs_no_library_map`].
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -120,13 +120,13 @@ pub static CODES: &[(&str, &str, &str, super::Certainty)] = &[
     (
         "Duplicate",
         "lint_101",
-        "A declaration hides or repeats another.",
+        "Two declarations of the same thing in one place.",
         super::Certainty::Definite,
     ),
     (
         "DeclaredBefore",
         "lint_102",
-        "A declaration is used before it is declared.",
+        "A secondary unit is analysed before the primary unit it belongs to.",
         super::Certainty::Definite,
     ),
     (

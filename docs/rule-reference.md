@@ -14,8 +14,8 @@ What a default run reports. Each one follows from the source and the resolved pr
 |---|---|
 | `lint_003` | An item that may not appear in a sensitivity list. |
 | `lint_100` | A name cannot be resolved to any declaration. |
-| `lint_101` | A declaration hides or repeats another. |
-| `lint_102` | A declaration is used before it is declared. |
+| `lint_101` | Two declarations of the same thing in one place. |
+| `lint_102` | A secondary unit is analysed before the primary unit it belongs to. |
 | `lint_103` | A deferred constant has no full declaration. |
 | `lint_104` | An incomplete type has no full declaration. |
 | `lint_105` | A protected type has no body. |

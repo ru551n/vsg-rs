@@ -715,3 +715,94 @@ fn related_locations_survive_a_path_that_needs_encoding() {
         "a URI never contains a raw space: {named}"
     );
 }
+
+#[test]
+fn a_configuration_that_does_not_load_stops_the_editor_rather_than_defaulting() {
+    // Silently falling back to the defaults let format-on-save rewrite a file under settings
+    // the project never chose, while the command line refused to run at all.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        dir.path().join("vsg-rs.yaml"),
+        "rule: [this is not a mapping\n",
+    )
+    .expect("write config");
+    let file = dir.path().join("dut.vhd");
+    std::fs::write(&file, TWO_DRIVERS).expect("write source");
+
+    let uri = file_uri(&file);
+    let mut session = Session::start_in(dir.path());
+    let got = session.talk_while(&[did_open(&uri, TWO_DRIVERS)], |seen| {
+        seen.iter()
+            .any(|m| m["method"] == "textDocument/publishDiagnostics")
+    });
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .expect("diagnostics were published");
+    let diagnostics = published["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "only the configuration: {diagnostics:#?}"
+    );
+    let message = diagnostics[0]["message"].as_str().expect("a message");
+    assert!(
+        message.contains("configuration could not be read"),
+        "{message}"
+    );
+    assert!(message.contains("vsg-rs.yaml"), "names the file: {message}");
+
+    // And it refuses to format, rather than formatting with the defaults.
+    let answered = session.talk_while(
+        &[serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/formatting",
+            "params": {
+                "textDocument": { "uri": uri },
+                "options": { "tabSize": 2, "insertSpaces": true }
+            }
+        })],
+        |seen| seen.iter().any(|m| m["id"] == 2),
+    );
+    let reply = answered
+        .iter()
+        .find(|m| m["id"] == 2)
+        .expect("the request was answered");
+    assert!(
+        reply["error"].is_object(),
+        "formatting is refused, not done with the defaults: {reply:#?}"
+    );
+}
+
+#[test]
+fn an_unreadable_library_map_says_why_the_resolving_rules_are_quiet() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
+    std::fs::write(dir.path().join("vhdl_ls.toml"), "[libraries\nbroken = =\n")
+        .expect("write config");
+    let file = dir.path().join("src/dut.vhd");
+    std::fs::write(&file, TWO_DRIVERS).expect("write source");
+
+    let uri = file_uri(&file);
+    let got = Session::start_in(dir.path()).talk_while(&[did_open(&uri, TWO_DRIVERS)], |seen| {
+        seen.iter()
+            .any(|m| m["method"] == "textDocument/publishDiagnostics")
+    });
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .expect("diagnostics were published");
+    let messages: Vec<&str> = published["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .filter_map(|d| d["message"].as_str())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("library map could not be read")),
+        "a report quietly missing most of its rules looks like a clean one: {messages:#?}"
+    );
+}

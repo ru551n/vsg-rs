@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
-use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::jsonrpc::{self, Result};
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOptions, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, Diagnostic, DiagnosticRelatedInformation,
@@ -45,13 +45,17 @@ pub(crate) struct Backend {
 
 /// The configuration that applies to a file, found the way the command line finds it: the
 /// nearest `vsg-rs.yaml` (or `.json`) in its directory or an ancestor.
-fn config_for(path: &Path) -> Config {
-    let found = path
-        .parent()
-        .and_then(vsg_rs::config::discover)
-        .and_then(|file| Config::load(&[file]).ok());
-    let cfg = found.unwrap_or_default();
-    cfg.for_path(path).into_owned()
+fn config_for(path: &Path) -> std::result::Result<Config, String> {
+    let Some(file) = path.parent().and_then(vsg_rs::config::discover) else {
+        return Ok(Config::default().for_path(path).into_owned());
+    };
+    // Not `.ok()`: a configuration that does not load is not the default configuration. Treating
+    // it as one lets format-on-save rewrite a file under settings the project never chose, while
+    // the command line refuses to run at all -- the editor and CI would disagree about the same
+    // file, which is the one thing this tool must not do.
+    let cfg = Config::load(std::slice::from_ref(&file))
+        .map_err(|e| format!("{}: {e}", file.display()))?;
+    Ok(cfg.for_path(path).into_owned())
 }
 
 /// The path an editor URI stands for. A document that is not a file still needs a name, because
@@ -160,9 +164,27 @@ fn diagnose(
     text: &str,
     analyser: &mut Option<analysis::lint::Analyser>,
 ) -> Vec<Diagnostic> {
-    let cfg = config_for(path);
-    let parsed = vsg_rs::Parsed::new(text.as_bytes().to_vec());
     let mut out = Vec::new();
+    // A configuration that does not load stops everything: every rule below, and the severity of
+    // every finding, comes from it. Saying so once, where the editor shows problems, is the whole
+    // report -- findings computed under settings the project did not choose would be fiction.
+    let cfg = match config_for(path) {
+        Ok(cfg) => cfg,
+        Err(message) => {
+            out.push(Diagnostic {
+                range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+                severity: Some(DiagnosticSeverity::ERROR),
+                source: Some("vsg-rs".to_owned()),
+                message: format!(
+                    "vsg-rs is not running on this file: its configuration could not be read. \
+                     {message}"
+                ),
+                ..Diagnostic::default()
+            });
+            return out;
+        }
+    };
+    let parsed = vsg_rs::Parsed::new(text.as_bytes().to_vec());
 
     // A file that does not parse gets its syntax errors and nothing else: every rule below would
     // be reasoning about a tree that does not represent the source.
@@ -207,8 +229,14 @@ fn diagnose(
         path.to_path_buf(),
         text.as_bytes().to_vec(),
     )];
+    let mut project_error = None;
     if analyser.is_none() {
-        *analyser = analysis::lint::Analyser::new(&sources).ok();
+        match analysis::lint::Analyser::new(&sources) {
+            Ok(built) => *analyser = Some(built),
+            // Not silence: an unreadable `vhdl_ls.toml` switches off most of the lint layer, and
+            // a report that is quietly missing 53 rules looks exactly like a clean one.
+            Err(message) => project_error = Some(message),
+        }
     }
     let resolved = analyser.as_mut().map(|analyser| analyser.analyse(&sources));
     let front_end = match resolved {
@@ -222,6 +250,18 @@ fn diagnose(
         // The project could not be built at all; the rules that need it simply do not report.
         None => Vec::new(),
     };
+    if let Some(message) = project_error {
+        out.push(Diagnostic {
+            range: Range::new(Position::new(0, 0), Position::new(0, 0)),
+            severity: Some(DiagnosticSeverity::WARNING),
+            source: Some("vsg-rs".to_owned()),
+            message: format!(
+                "The rules that resolve names across files are not running: the project's \
+                 library map could not be read. {message}"
+            ),
+            ..Diagnostic::default()
+        });
+    }
 
     for finding in analysis::findings_for(&parsed, path, &cfg)
         .into_iter()
@@ -416,7 +456,11 @@ impl LanguageServer for Backend {
                         .as_ref()
                         .is_none_or(|only| only.iter().any(|k| k == kind))
                 };
-                let cfg = config_for(&path);
+                // No configuration, no actions: a fix computed under the default settings is
+                // not the fix `--fix` would apply, and applying it would be a silent edit.
+                let Ok(cfg) = config_for(&path) else {
+                    return Vec::new();
+                };
                 let parsed = vsg_rs::Parsed::new(text.as_bytes().to_vec());
                 let mut actions: Vec<CodeActionOrCommand> = Vec::new();
 
@@ -497,16 +541,25 @@ impl LanguageServer for Backend {
         let formatted = tokio::task::spawn_blocking({
             let source = text.as_bytes().to_vec();
             move || {
-                let cfg = config_for(&path);
+                let cfg = config_for(&path)?;
                 let parsed = vsg_rs::Parsed::new(source);
-                vsg_rs::fix_with(&parsed, &cfg, &vsg_rs::FixOptions::default())
-                    .ok()
-                    .map(|out| out.output)
+                Ok(
+                    vsg_rs::fix_with(&parsed, &cfg, &vsg_rs::FixOptions::default())
+                        .ok()
+                        .map(|out| out.output),
+                )
             }
         })
         .await
-        .ok()
-        .flatten();
+        .map_err(|_| jsonrpc::Error::internal_error())?;
+        // Refusing is the point: formatting under the default settings would rewrite the file
+        // the project's own configuration does not describe, and the editor would disagree with
+        // what the command line does to the same file.
+        let formatted = formatted.map_err(|message: String| jsonrpc::Error {
+            code: jsonrpc::ErrorCode::InvalidParams,
+            message: format!("vsg-rs did not format this file: {message}").into(),
+            data: None,
+        })?;
         // A file that does not parse is left alone, as `--fix` leaves it alone.
         let Some(formatted) = formatted else {
             return Ok(None);

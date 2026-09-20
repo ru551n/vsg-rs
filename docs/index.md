@@ -1,7 +1,16 @@
 # vsg-rs
 
+**Catch it earlier. Earlier than simulation.**
+
 A VHDL formatter and static-analysis tool written in Rust, with the rule set, command line and
 configuration of the [VHDL Style Guide](https://vhdl-style-guide.readthedocs.io/) (VSG).
+
+A bug costs more the longer it takes to find: a moment in your editor, a coffee in CI, an
+afternoon in a waveform viewer, a respin on silicon. Some of what vsg-rs reports a simulator
+would have told you eventually — an index outside its array, a value outside its subtype, a
+process that can never suspend — but only once the testbench exists, the design elaborates and
+the run reaches that line. Some of it no simulator will ever tell you, because the design works
+and simply does not mean what it says.
 
 Source is parsed once into a lossless syntax tree and printed in one canonical layout, so
 formatting is decided rather than negotiated. On top of that sits a lint layer that resolves names

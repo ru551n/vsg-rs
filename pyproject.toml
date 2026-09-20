@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "vsg-rs"
 dynamic = ["version"]
-description = "A fast Rust-native VHDL formatter and style checker with VSG-compatible rules and configuration."
+description = "Catch VHDL bugs before simulation: a fast Rust formatter and linter with VSG-compatible rules and configuration."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT OR Apache-2.0"

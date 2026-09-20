@@ -140,7 +140,21 @@ fn lint(source: &str, path: &Path) -> Result<Value, String> {
             "severity": violation.severity.to_string(),
         }));
     }
-    for finding in vsg_rs::analysis::findings_for(&parsed, path, &cfg) {
+    // The front end's rules as well, so an agent sees what `--check style,lint` sees. They need
+    // the project's library map, found from the file's path; without one only a few of them
+    // report, exactly as on the command line.
+    let (front_end, unbuilt) =
+        match vsg_rs::analysis::lint::front_end_for(path, source.as_bytes().to_vec()) {
+            Ok(findings) => (findings, None),
+            Err(why) => (Vec::new(), Some(why)),
+        };
+    let native = vsg_rs::analysis::findings_for(&parsed, path, &cfg)
+        .into_iter()
+        .chain(front_end);
+    for finding in native {
+        if cfg.rule_by_id(finding.rule).is_some_and(|s| !s.enabled) {
+            continue;
+        }
         found.push(json!({
             "rule": finding.rule,
             "at": { "line": finding.line, "column": finding.column },
@@ -148,7 +162,16 @@ fn lint(source: &str, path: &Path) -> Result<Value, String> {
             "certainty": vsg_rs::analysis::certainty_of(finding.rule).map(Certainty::name),
         }));
     }
-    Ok(json!({ "findings": found, "parsed": true }))
+    let mut answer = json!({ "findings": found, "parsed": true });
+    // Said out loud rather than left to silence: without the front end most of the lint layer
+    // did not run, and a report missing it looks exactly like a clean one.
+    if let Some(why) = unbuilt {
+        answer["warning"] = json!(format!(
+            "The rules that resolve names across files did not run: the project's library map \
+             could not be read. {why}"
+        ));
+    }
+    Ok(answer)
 }
 
 use vsg_rs::analysis::Certainty;
@@ -362,6 +385,41 @@ mod tests {
                 .expect("findings")
                 .iter()
                 .any(|f| f["rule"] == "lint_770" && f["certainty"] == "definite error"),
+            "{body}"
+        );
+    }
+
+    /// The front end is half the lint layer, and an answer missing it looks like a clean file.
+    /// This asks for a rule only `vhdl_lang` can report, and one that needs no library map, so
+    /// it holds wherever the tests run.
+    ///
+    /// A real file, because the front end analyses a buffer by standing it in for the file it
+    /// names: a path that is on no disk belongs to no library and is never analysed.
+    #[test]
+    fn lint_runs_the_front_end_too() {
+        let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
+                      constant c : bit := '0';\n  signal a : bit;\n  signal b : bit;\nbegin\n  \
+                      p : process (a, c) is\n  begin\n    b <= a;\n  end process p;\n\
+                      end architecture rtl;\n";
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("dut.vhd");
+        std::fs::write(&path, source).expect("the file is written");
+
+        let reply = request(
+            "tools/call",
+            &json!({
+                "name": "lint",
+                "arguments": { "source": source, "path": path.to_str().expect("utf-8") }
+            }),
+        );
+        let body = body_of(&reply);
+        // lint_003: a constant is not a signal and cannot be in a sensitivity list.
+        assert!(
+            body["findings"]
+                .as_array()
+                .expect("findings")
+                .iter()
+                .any(|f| f["rule"] == "lint_003"),
             "{body}"
         );
     }

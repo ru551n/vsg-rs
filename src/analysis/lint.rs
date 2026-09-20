@@ -66,6 +66,37 @@ pub fn needs_no_library_map(rule: &str) -> bool {
     matches!(rule, "lint_001" | "lint_002" | "lint_003")
 }
 
+impl Analysis {
+    /// The findings worth showing, which is not all of them when the project has no library map.
+    ///
+    /// Every caller of the front end needs this same filter, and getting it wrong is not visible
+    /// in the output: too little looks like a clean file, too much like a broken one.
+    #[must_use]
+    pub fn reportable(self) -> Vec<Finding> {
+        if self.mapped {
+            return self.findings;
+        }
+        self.findings
+            .into_iter()
+            .filter(|f| needs_no_library_map(f.rule))
+            .collect()
+    }
+}
+
+/// The front end's rules for one buffer, analysed against the project its path belongs to.
+///
+/// For a caller that asks once and keeps nothing: the project is built for this call and dropped
+/// after it. An editor asks on every keystroke and holds its analyser instead.
+///
+/// The error is returned rather than swallowed, because a report quietly missing most of the
+/// lint layer looks exactly like a clean one.
+pub fn front_end_for(path: &Path, text: Vec<u8>) -> Result<Vec<Finding>, String> {
+    let sources = [Source::buffer(path.to_path_buf(), text)];
+    let map = path.parent().and_then(project_config_for);
+    let mut analyser = Analyser::for_project(&sources, map.as_deref())?;
+    Ok(analyser.analyse(&sources).reportable())
+}
+
 /// Every `vhdl_lang` diagnostic this layer reports, as (its error code, our rule id, what it
 /// means). The code names come from `ErrorCode`'s `Debug` form, because the published crate does
 /// not export the enum itself.

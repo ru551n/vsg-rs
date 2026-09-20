@@ -1,6 +1,6 @@
 {
   "name": "vsg-rs",
-  "displayName": "vsg-rs \u2014 VHDL formatter and static analysis",
+  "displayName": "vsg-rs: VHDL formatter and static analysis",
   "description": "Formatting, diagnostics and quick fixes for VHDL, from the vsg-rs language server. Complements a VHDL language server such as VHDL-LS.",
   "version": "0.11.0",
   "publisher": "ru551n",

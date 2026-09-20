@@ -271,6 +271,12 @@ enum Style {
     bin_name = "vsg-rs",
     about = "Analyzes VHDL files for style guide violations. Reference documentation is \
              located at: http://vhdl-style-guide.readthedocs.io/en/latest/index.html",
+    // Neither is a VSG argument, and a file of that name still wins over both, so no VSG command
+    // line changes meaning. They are listed because a server nobody knows about is a server
+    // nobody runs.
+    after_help = "Servers:\n  \
+                  vsg-rs lsp   a language server: diagnostics, formatting and quick fixes\n  \
+                  vsg-rs mcp   an MCP server, so a coding agent can lint and format a buffer",
     disable_version_flag = true
 )]
 struct Args {

@@ -48,6 +48,33 @@ fn stdin_fix_succeeds_with_remaining_violations() {
 }
 
 #[test]
+fn psl_written_as_code_is_named_rather_than_puzzled_over() {
+    // The formatter's parser stops at `default clock`, and saying
+    // `Unexpected(Token(Keyword(Default)))` tells nobody what to do about it.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let psl = write(
+        dir.path(),
+        "psl.vhd",
+        "entity dut is\n  port (\n    clk : in bit;\n    a : in bit\n  );\n         end entity dut;\n\narchitecture rtl of dut is\nbegin\n           default clock is rising_edge(clk);\n  chk : assert always (a);\n         end architecture rtl;\n",
+    );
+    let out = vsg(&["-f", psl.to_str().unwrap(), "--fix"], "");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("written in PSL"), "{err}");
+    assert!(err.contains("vsg-rs lint"), "{err}");
+    assert!(!err.contains("Unexpected"), "{err}");
+
+    // PSL in a comment is a comment: the file formats like any other.
+    let commented = write(
+        dir.path(),
+        "commented.vhd",
+        "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\nbegin\n           -- psl default clock is rising_edge(clk);\n  -- psl assert always (a);\n         end architecture rtl;\n",
+    );
+    let out = vsg(&["-f", commented.to_str().unwrap(), "--fix"], "");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(!err.contains("written in PSL"), "{err}");
+}
+
+#[test]
 fn syntax_errors_are_reported_and_nothing_is_changed() {
     let out = vsg(&["--stdin", "--fix"], MALFORMED);
     assert_eq!(out.status.code(), Some(1));

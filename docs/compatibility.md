@@ -144,10 +144,29 @@ unchanged. Two are non-UTF-8 charset fixtures, one uses PSL written as code.
 | VHDL-2019 mode views (`view v of r`, `port (x : view v)`) | no |
 | VHDL-2019 conditional expressions in a declaration (`:= if c then a else b`) | no |
 | PSL in comments (`-- psl assert ...`) | yes (comments are never changed) |
-| PSL as code (`default clock is ...`, `assert always (a -> b) @clk`) | no |
+| PSL as code (`default clock is ...`, `assert always (a -> b) @clk`) | lint layer only |
 
 The gaps are in the parser (`vhdl_syntax`), not in the rules; a file that does not parse is
 never modified.
+
+### PSL
+
+The two layers do not agree about PSL, because they do not share a parser.
+
+* **PSL in comments** is a comment. Both layers read the file, and the formatter never changes
+  what is inside the comment.
+* **PSL written as code** — `default clock is`, `property p is`, `assert always (a -> b)` — is
+  not parsed by `vhdl_syntax`, so the **style layer** reports the file and leaves it exactly as
+  it was. The **lint layer** reads it perfectly well, because `vhdl_lang` is a separate parser:
+  `vsg-rs lint`, or `--check lint`, analyses such a file like any other.
+
+A file the formatter cannot parse now says so in those terms, rather than naming the token it
+stopped at — which for `default clock` was `Unexpected(Token(Keyword(Default)))`, and helped
+nobody. Of the 24 PSL files in `nvc`'s regression suite, 18 format normally and 6 are reported
+this way.
+
+VSG has no PSL rules of its own, so a PSL file is not a compatibility difference between the
+two tools.
 
 ## The configured-project benchmark
 

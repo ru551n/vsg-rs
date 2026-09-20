@@ -63,7 +63,7 @@ Test references are fixtures in `tests/formatting/`.
 | Selected / indexed names, external names | unavoidable overflow only | names are never split; indices fold as lists | — |
 | Signatures (`[t return t]`) | supported | move to a continuation line, then one type mark per line | `signatures` |
 | VHDL-2019 tool directives | supported | kept on their own line at column 0 | `tool_directives` |
-| PSL | blocked by frontend | PSL does not parse; such files are left untouched | — |
+| PSL | blocked by frontend | PSL as code does not parse; the file is left untouched and named as PSL. PSL in comments folds like any comment. The lint layer reads both | — |
 | Comments (trailing, own-line, block) | supported | never moved or wrapped; trailing comments force a break | `comments` |
 | Formatter-off regions | supported | items inside are kept as written | `fmt_off` |
 | Nested constructs | supported | bounded alignment prevents staircases | `deep_nesting` |

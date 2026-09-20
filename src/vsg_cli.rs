@@ -123,6 +123,35 @@ fn diagnostic(parsed: &Parsed, v: &Violation) -> Diagnostic {
     }
 }
 
+/// Whether the source is written in PSL, the assertion language VHDL-2008 folds in.
+///
+/// vsg-rs's formatter cannot parse PSL written as code, and says so in terms of the token it
+/// tripped over -- `Unexpected(Token(Keyword(Default)))` for `default clock is`, which tells
+/// nobody anything. The markers below are not legal VHDL outside PSL, so finding one explains
+/// the failure rather than guessing at it.
+///
+/// PSL in comments is not this: a comment is a comment, and those files format normally.
+fn written_in_psl(source: &str) -> bool {
+    let lower = source.to_ascii_lowercase();
+    // `|->` and `|=>` are PSL implication; `default clock` has no VHDL meaning at all.
+    if lower.contains("|->") || lower.contains("|=>") {
+        return true;
+    }
+    lower.lines().any(|line| {
+        let line = line.trim_start();
+        // A comment is PSL's other home, and those parse: only code counts here.
+        if line.starts_with("--") {
+            return false;
+        }
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words.as_slice() {
+            ["default", "clock", ..] => true,
+            [kind, _, "is", ..] => matches!(*kind, "property" | "sequence"),
+            _ => false,
+        }
+    })
+}
+
 fn describe_error(parsed: &Parsed, e: &FormatError) -> String {
     let at = |offset| {
         let (line, col) = parsed.line_col(offset);
@@ -130,6 +159,13 @@ fn describe_error(parsed: &Parsed, e: &FormatError) -> String {
     };
     match e {
         FormatError::Syntax(diags) => {
+            if written_in_psl(&String::from_utf8_lossy(parsed.source())) {
+                return "cannot format: this file is written in PSL, which the formatter does \
+                        not parse; left unchanged. The lint layer reads it: run `vsg-rs lint`, \
+                        or `--check lint` to leave the style layer out. PSL written in comments \
+                        formats normally."
+                    .to_owned();
+            }
             let first = diags
                 .first()
                 .map(|d| format!(" (first at {}: {})", at(d.offset), d.message))

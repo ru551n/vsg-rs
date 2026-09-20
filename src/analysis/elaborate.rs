@@ -538,19 +538,22 @@ pub fn configurations(parsed: &Parsed, file: &Path, design: &Design) -> Vec<Find
     findings
 }
 
-pub const RULES: &[(&str, &str)] = &[
-    (
-        "lint_730",
-        "A signal is read but nothing drives it: no assignment, and no instance output.",
-    ),
-    (
-        "lint_750",
-        "A component declaration does not match the entity it stands for.",
-    ),
-    (
-        "lint_751",
-        "A configuration names an architecture that is not declared.",
-    ),
+pub const RULES: &[super::Rule] = &[
+    super::Rule {
+        id: "lint_730",
+        description: "A signal is read but nothing drives it: no assignment, and no instance output.",
+        certainty: super::Certainty::Advisory,
+    },
+    super::Rule {
+        id: "lint_750",
+        description: "A component declaration does not match the entity it stands for.",
+        certainty: super::Certainty::Advisory,
+    },
+    super::Rule {
+        id: "lint_751",
+        description: "A configuration names an architecture that is not declared.",
+        certainty: super::Certainty::Definite,
+    },
 ];
 
 #[cfg(test)]

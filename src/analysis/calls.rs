@@ -129,10 +129,11 @@ pub(crate) fn recursion(project: &Project, wanted: &BTreeMap<PathBuf, PathBuf>) 
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[(
-    "lint_760",
-    "A subprogram whose body calls itself, which no synthesis tool accepts (off by default).",
-)];
+pub const RULES: &[super::Rule] = &[super::Rule {
+    id: "lint_760",
+    description: "A subprogram whose body calls itself, which no synthesis tool accepts (off by default).",
+    certainty: super::Certainty::Advisory,
+}];
 
 #[cfg(test)]
 mod tests {

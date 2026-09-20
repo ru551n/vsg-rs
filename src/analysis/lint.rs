@@ -72,295 +72,367 @@ pub fn needs_no_library_map(rule: &str) -> bool {
 ///
 /// `SyntaxError` and `Internal` are not here: vsg-rs reports parse failures itself, and an
 /// internal error of the analyser is not a finding about the code.
-pub static CODES: &[(&str, &str, &str)] = &[
+pub static CODES: &[(&str, &str, &str, super::Certainty)] = &[
     // Advisory lints
     (
         "MissingInSensitivityList",
         "lint_001",
         "A signal read by a combinational process is missing from its sensitivity list.",
+        super::Certainty::Advisory,
     ),
     (
         "SuperfluousInSensitivityList",
         "lint_002",
         "A signal in a sensitivity list is not read by the process.",
+        super::Certainty::Advisory,
     ),
     (
         "DisallowedInSensitivityList",
         "lint_003",
         "An item that may not appear in a sensitivity list.",
+        super::Certainty::Definite,
     ),
-    ("Unused", "lint_004", "A declaration is never used."),
+    (
+        "Unused",
+        "lint_004",
+        "A declaration is never used.",
+        super::Certainty::Advisory,
+    ),
     (
         "UnnecessaryWorkLibrary",
         "lint_005",
         "`library work` is implicit and does not need declaring.",
+        super::Certainty::Advisory,
     ),
     (
         "UnassociatedContext",
         "lint_006",
         "A context clause is not attached to any design unit.",
+        super::Certainty::Advisory,
     ),
     // Names and declarations
     (
         "Unresolved",
         "lint_100",
         "A name cannot be resolved to any declaration.",
+        super::Certainty::Definite,
     ),
     (
         "Duplicate",
         "lint_101",
         "A declaration hides or repeats another.",
+        super::Certainty::Definite,
     ),
     (
         "DeclaredBefore",
         "lint_102",
         "A declaration is used before it is declared.",
+        super::Certainty::Definite,
     ),
     (
         "MissingDeferredDeclaration",
         "lint_103",
         "A deferred constant has no full declaration.",
+        super::Certainty::Definite,
     ),
     (
         "MissingFullTypeDeclaration",
         "lint_104",
         "An incomplete type has no full declaration.",
+        super::Certainty::Definite,
     ),
     (
         "MissingProtectedBodyType",
         "lint_105",
         "A protected type has no body.",
+        super::Certainty::Definite,
     ),
     (
         "IllegalDeferredConstant",
         "lint_106",
         "A deferred constant where none is allowed.",
+        super::Certainty::Definite,
     ),
     (
         "DeclarationNotAllowed",
         "lint_107",
         "A declaration that this region does not allow.",
+        super::Certainty::Definite,
     ),
     (
         "ConflictingUseClause",
         "lint_108",
         "Two use clauses make the same name visible.",
+        super::Certainty::Definite,
     ),
     (
         "CircularDependency",
         "lint_109",
         "Design units depend on each other in a cycle.",
+        super::Certainty::Definite,
     ),
     (
         "ConfigNotInSameLibrary",
         "lint_110",
         "A configuration is not in the library of the entity it configures.",
+        super::Certainty::Definite,
     ),
     // Types and expressions
     (
         "TypeMismatch",
         "lint_200",
         "An expression does not have the expected type.",
+        super::Certainty::Definite,
     ),
     (
         "DimensionMismatch",
         "lint_201",
         "Array dimensions do not match.",
+        super::Certainty::Definite,
     ),
     (
         "NoImplicitConversion",
         "lint_202",
         "The types have no implicit conversion between them.",
+        super::Certainty::Definite,
     ),
     (
         "InvalidLiteral",
         "lint_203",
         "A literal is not valid for its type.",
+        super::Certainty::Definite,
     ),
     (
         "ExpectedSubAggregate",
         "lint_204",
         "A sub-aggregate was expected.",
+        super::Certainty::Definite,
     ),
     (
         "AmbiguousExpression",
         "lint_205",
         "An expression has more than one possible type.",
+        super::Certainty::Definite,
     ),
     (
         "NonScalarInRange",
         "lint_206",
         "A range bound is not scalar.",
+        super::Certainty::Definite,
     ),
     (
         "TooManyConstraints",
         "lint_207",
         "More constraints than the type has dimensions.",
+        super::Certainty::Definite,
     ),
     (
         "TooFewConstraints",
         "lint_208",
         "Fewer constraints than the type needs.",
+        super::Certainty::Definite,
     ),
     (
         "IllegalConstraint",
         "lint_209",
         "A constraint that this type does not accept.",
+        super::Certainty::Definite,
     ),
     (
         "MismatchedKinds",
         "lint_210",
         "A name is used as the wrong kind of thing.",
+        super::Certainty::Definite,
     ),
     (
         "MismatchedObjectClass",
         "lint_211",
         "A signal, variable or constant used where another was expected.",
+        super::Certainty::Definite,
     ),
     (
         "MismatchedEntityClass",
         "lint_212",
         "An entity class that does not match the declaration.",
+        super::Certainty::Definite,
     ),
     (
         "CannotBePrefixed",
         "lint_213",
         "A name that cannot take a prefix.",
+        super::Certainty::Definite,
     ),
     (
         "IllegalAttribute",
         "lint_214",
         "An attribute that does not apply here.",
+        super::Certainty::Definite,
     ),
     (
         "MisplacedAttributeSpec",
         "lint_215",
         "An attribute specification in the wrong place.",
+        super::Certainty::Definite,
     ),
     // Subprograms and calls
     (
         "AmbiguousCall",
         "lint_300",
         "A call matches more than one subprogram.",
+        super::Certainty::Definite,
     ),
     (
         "InvalidCall",
         "lint_301",
         "A call that cannot be made here.",
+        super::Certainty::Definite,
     ),
     (
         "TooManyArguments",
         "lint_302",
         "More arguments than the subprogram takes.",
+        super::Certainty::Definite,
     ),
     (
         "NamedBeforePositional",
         "lint_303",
         "A positional association after a named one.",
+        super::Certainty::Definite,
     ),
     (
         "SignatureMismatch",
         "lint_304",
         "A signature does not match the subprogram.",
+        super::Certainty::Definite,
     ),
     (
         "IllegalSignature",
         "lint_305",
         "A signature where none is allowed.",
+        super::Certainty::Definite,
     ),
     (
         "SignatureRequired",
         "lint_306",
         "A signature is needed to disambiguate.",
+        super::Certainty::Definite,
     ),
     (
         "NoOverloadedWithSignature",
         "lint_307",
         "No overload matches the signature.",
+        super::Certainty::Definite,
     ),
     (
         "UnexpectedSignature",
         "lint_308",
         "A signature on something that cannot have one.",
+        super::Certainty::Definite,
     ),
     (
         "InvalidOperatorSymbol",
         "lint_309",
         "An operator symbol that is not an operator.",
+        super::Certainty::Definite,
     ),
-    ("VoidReturn", "lint_310", "A function returns nothing."),
-    ("NonVoidReturn", "lint_311", "A procedure returns a value."),
+    (
+        "VoidReturn",
+        "lint_310",
+        "A function returns nothing.",
+        super::Certainty::Definite,
+    ),
+    (
+        "NonVoidReturn",
+        "lint_311",
+        "A procedure returns a value.",
+        super::Certainty::Definite,
+    ),
     (
         "IllegalReturn",
         "lint_312",
         "A return statement where none is allowed.",
+        super::Certainty::Definite,
     ),
     (
         "MismatchedSubprogramInstantiation",
         "lint_313",
         "A subprogram instantiation does not match its target.",
+        super::Certainty::Definite,
     ),
     (
         "AmbiguousInstantiation",
         "lint_314",
         "An instantiation matches more than one target.",
+        super::Certainty::Definite,
     ),
     // Ports, generics and associations
     (
         "Unassociated",
         "lint_400",
         "A port or generic has no association and no default.",
+        super::Certainty::Definite,
     ),
     (
         "AlreadyAssociated",
         "lint_401",
         "A formal is associated more than once.",
+        super::Certainty::Definite,
     ),
     (
         "InvalidFormal",
         "lint_402",
         "A formal that the interface does not have.",
+        super::Certainty::Definite,
     ),
     (
         "InvalidFormalConversion",
         "lint_403",
         "A conversion on a formal that is not allowed.",
+        super::Certainty::Definite,
     ),
     (
         "InterfaceModeMismatch",
         "lint_404",
         "An actual does not match the mode of its formal.",
+        super::Certainty::Definite,
     ),
     // Statements
     (
         "ExitOutsideLoop",
         "lint_500",
         "An exit statement outside a loop.",
+        super::Certainty::Definite,
     ),
     (
         "NextOutsideLoop",
         "lint_501",
         "A next statement outside a loop.",
+        super::Certainty::Definite,
     ),
     (
         "InvalidLoopLabel",
         "lint_502",
         "A loop label that does not name an enclosing loop.",
+        super::Certainty::Definite,
     ),
 ];
 
 fn rule_of(code: &str) -> Option<(&'static str, &'static str)> {
     CODES
         .iter()
-        .find(|(name, _, _)| *name == code)
-        .map(|(_, rule, description)| (*rule, *description))
+        .find(|(name, _, _, _)| *name == code)
+        .map(|(_, rule, description, _)| (*rule, *description))
 }
 
 /// Every rule this layer can report, for `--list_rules` and the configuration.
-pub fn rules() -> impl Iterator<Item = (&'static str, &'static str)> {
+pub fn rules() -> impl Iterator<Item = super::Rule> {
     CODES
         .iter()
-        .map(|(_, rule, description)| (*rule, *description))
+        .map(|(_, id, description, certainty)| super::Rule {
+            id,
+            description,
+            certainty: *certainty,
+        })
 }
 
 /// Silence `vhdl_lang`'s own progress and configuration messages; ours is the report that counts.

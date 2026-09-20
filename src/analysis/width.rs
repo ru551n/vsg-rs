@@ -159,10 +159,11 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[(
-    "lint_740",
-    "A vector is assigned to one of a different width.",
-)];
+pub const RULES: &[super::Rule] = &[super::Rule {
+    id: "lint_740",
+    description: "A vector is assigned to one of a different width.",
+    certainty: super::Certainty::Definite,
+}];
 
 #[cfg(test)]
 mod tests {

@@ -907,11 +907,15 @@ fn sonar_report(results: &[FileResult]) -> String {
                 range.insert("startColumn".to_owned(), column.into());
             }
             let kind = kind_of(&d.rule);
+            // A bug is a claim that the design is wrong, so only the rules that can show it get
+            // to make it. An advisory rule someone switched on is reporting something legal, and
+            // filing that as a bug is how a report stops being believed.
+            let bug = vsg_rs::analysis::certainty_of(&d.rule)
+                .is_some_and(|c| c == vsg_rs::analysis::Certainty::Definite);
             serde_json::json!({
                 "engineId": "vsg-rs",
                 "ruleId": d.rule,
-                // A lint finding says the hardware is wrong; a style one says it reads badly.
-                "type": if kind == "lint" { "BUG" } else { "CODE_SMELL" },
+                "type": if bug { "BUG" } else { "CODE_SMELL" },
                 "severity": sonar_severity(kind, &d.severity, d.fixable),
                 "primaryLocation": {
                     "message": d.message,
@@ -1164,24 +1168,20 @@ fn sarif_report(results: &[FileResult]) -> String {
 /// `--explain RULE`: what one rule is, in the words vsg-rs has for it.
 /// Every rule of the lint layer: the front end's own, and the structural ones vsg-rs adds.
 /// One list, so `--list_rules` and `--explain` can never disagree about what exists.
-fn lint_rules() -> impl Iterator<Item = (&'static str, &'static str)> {
-    vsg_rs::analysis::lint::rules()
-        .chain(vsg_rs::analysis::design::RULES.iter().copied())
-        .chain(vsg_rs::analysis::elaborate::RULES.iter().copied())
-        .chain(vsg_rs::analysis::fsm::RULES.iter().copied())
-        .chain(vsg_rs::analysis::combinational::RULES.iter().copied())
-        .chain(vsg_rs::analysis::clockdomain::RULES.iter().copied())
-        .chain(vsg_rs::analysis::width::RULES.iter().copied())
-        .chain(vsg_rs::analysis::choices::RULES.iter().copied())
-        .chain(vsg_rs::analysis::calls::RULES.iter().copied())
+/// Every rule of the lint layer, from the library's one registry.
+///
+/// The binary used to chain the modules itself, which meant the command line could list a set
+/// of rules the configuration layer knew nothing about.
+fn lint_rules() -> impl Iterator<Item = vsg_rs::analysis::Rule> {
+    vsg_rs::analysis::rules()
 }
 
 fn explain_rule(rule: &str) -> ExitCode {
     let mut out = io::stdout().lock();
     let kind = kind_of(rule);
     let described = lint_rules()
-        .find(|(id, _)| *id == rule)
-        .map(|(_, description)| description.to_owned())
+        .find(|known| known.id == rule)
+        .map(|known| known.description.to_owned())
         .or_else(|| rules::info(rule).map(|info| info.description.to_owned()))
         .or_else(|| {
             (kind == "layout" && rules::is_known_rule(rule))
@@ -1232,8 +1232,22 @@ fn list_rules() -> ExitCode {
         };
         let _ = writeln!(out, "{id:42} {status}");
     }
-    for (id, description) in lint_rules() {
-        let _ = writeln!(out, "{id:42} lint (--check lint): {description}");
+    for known in lint_rules() {
+        // The class, because whether a rule runs unless asked is the first thing anyone wants to
+        // know about it, and reading it off a separate page is how the two come to disagree.
+        let state = if known.certainty.on_by_default() {
+            "on"
+        } else {
+            "off"
+        };
+        let _ = writeln!(
+            out,
+            "{:42} lint (--check lint), {} [{}]: {}",
+            known.id,
+            known.certainty.name(),
+            state,
+            known.description
+        );
     }
     ExitCode::SUCCESS
 }
@@ -2150,7 +2164,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                     // project rather than the syntax tree. Counting only the first set would
                     // understate what a missing library map costs.
                     let inactive = vsg_rs::analysis::lint::rules()
-                        .filter(|(id, _)| !vsg_rs::analysis::lint::needs_no_library_map(id))
+                        .filter(|rule| !vsg_rs::analysis::lint::needs_no_library_map(rule.id))
                         .count()
                         + vsg_rs::analysis::calls::RULES.len();
                     let findings = if held_back > 0 {

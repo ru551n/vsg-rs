@@ -255,16 +255,18 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[
-    (
-        "lint_712",
-        "A 'when others' alternative that no value can reach.",
-    ),
-    (
-        "lint_713",
-        "A 'when others' alternative on an enumeration, instead of naming every value \
+pub const RULES: &[super::Rule] = &[
+    super::Rule {
+        id: "lint_712",
+        description: "A 'when others' alternative that no value can reach.",
+        certainty: super::Certainty::Advisory,
+    },
+    super::Rule {
+        id: "lint_713",
+        description: "A 'when others' alternative on an enumeration, instead of naming every value \
          (off by default).",
-    ),
+        certainty: super::Certainty::Policy,
+    },
 ];
 
 #[cfg(test)]

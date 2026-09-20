@@ -2,22 +2,17 @@
 
 # Rule reference
 
-Every rule of the lint layer, grouped by what the analyser knows when it reports one.
-`vsg-rs --explain <rule>` prints the same description, and `--list_rules` lists these
-alongside the VSG style rules.
+Every rule of the lint layer, grouped by how sure it is that what it reports is wrong.
+Only the first group runs unless you ask for more; `vsg-rs --list_rules` says the same
+about every rule, and `vsg-rs --explain <rule>` prints the description again.
 
-## Resolved semantics
+## Definite errors
 
-Reported by the VHDL front end from a resolved symbol table: a name, its declaration and its type. These need a library map; see [Project setup](project-setup.md).
+What a default run reports. Each one follows from the source and the resolved project: the program cannot do what it says, whatever anyone intended by it. A finding here is something to correct, not something to weigh up.
 
 | Rule | Reports |
 |---|---|
-| `lint_001` | A signal read by a combinational process is missing from its sensitivity list. |
-| `lint_002` | A signal in a sensitivity list is not read by the process. |
 | `lint_003` | An item that may not appear in a sensitivity list. |
-| `lint_004` | A declaration is never used. |
-| `lint_005` | `library work` is implicit and does not need declaring. |
-| `lint_006` | A context clause is not attached to any design unit. |
 | `lint_100` | A name cannot be resolved to any declaration. |
 | `lint_101` | A declaration hides or repeats another. |
 | `lint_102` | A declaration is used before it is declared. |
@@ -68,39 +63,44 @@ Reported by the VHDL front end from a resolved symbol table: a name, its declara
 | `lint_500` | An exit statement outside a loop. |
 | `lint_501` | A next statement outside a loop. |
 | `lint_502` | A loop label that does not name an enclosing loop. |
+| [`lint_740`](native-rules.md#lint_740) | A vector is assigned to one of a different width. |
+| [`lint_751`](native-rules.md#lint_751) | A configuration names an architecture that is not declared. |
 
-## Dataflow and structure
+## Advisory analysis
 
-Reported by vsg-rs from the syntax tree plus the design's port connections. The evidence is structural, so these run without a library map.
+The fact is exact and the conclusion is a judgement. An unused declaration really is unused; whether that is a mistake is not something the source says. **Off unless asked for**, with `rule.group.advisory.disable: false` or one rule at a time.
 
 | Rule | Reports |
 |---|---|
+| `lint_001` | A signal read by a combinational process is missing from its sensitivity list. |
+| `lint_002` | A signal in a sensitivity list is not read by the process. |
+| `lint_004` | A declaration is never used. |
+| `lint_005` | `library work` is implicit and does not need declaring. |
+| `lint_006` | A context clause is not attached to any design unit. |
 | [`lint_601`](native-rules.md#lint_601) | A signal is assigned by more than one concurrent statement. |
 | [`lint_710`](native-rules.md#lint_710) | A state of an enumerated state machine is never entered. |
 | [`lint_711`](native-rules.md#lint_711) | A state of an enumerated state machine has no exit. |
 | [`lint_712`](native-rules.md#lint_712) | A 'when others' alternative that no value can reach. |
 | [`lint_720`](native-rules.md#lint_720) | A signal depends on itself through combinational logic, with no register in the loop. |
 | [`lint_730`](native-rules.md#lint_730) | A signal is read but nothing drives it: no assignment, and no instance output. |
-| [`lint_740`](native-rules.md#lint_740) | A vector is assigned to one of a different width. |
 | [`lint_750`](native-rules.md#lint_750) | A component declaration does not match the entity it stands for. |
-| [`lint_751`](native-rules.md#lint_751) | A configuration names an architecture that is not declared. |
+| [`lint_760`](native-rules.md#lint_760) | A subprogram whose body calls itself, which no synthesis tool accepts (off by default). |
 
-## Experimental (off by default)
+## Experimental
 
-These infer design intent that the source does not state outright, so they cannot point at the evidence the rules above can. `lint_700` is off unless you enable it; `lint_600` is on, because a latch is derived from the assignments themselves once a process is taken to be combinational.
+Inferred rather than derived: the rule decides what the design is trying to be before it decides whether it succeeds, so it cannot point at the evidence the rules above can. **Off unless asked for**, with `rule.group.experimental.disable: false`.
 
 | Rule | Reports |
 |---|---|
 | [`lint_600`](native-rules.md#lint_600) | A combinational process does not assign a signal on every path, inferring a latch. |
 | [`lint_700`](native-rules.md#lint_700) | A signal registered on one clock is used in logic on another, without a synchroniser. |
 
-## Style policy
+## Policy
 
-A house's choice rather than a defect: what they report is legal and works today, and matters only because of what the project means to do with the code. Off unless configured.
+A house's convention, which the language has no opinion about. **Off unless asked for**, with `rule.group.policy.disable: false`; most also need configuring before they mean anything.
 
 | Rule | Reports |
 |---|---|
 | [`lint_602`](native-rules.md#lint_602) | A signal assigned by a clocked process does not have a register suffix (off by default; set `suffixes`). |
 | [`lint_603`](native-rules.md#lint_603) | A signal assigned by a clocked process does not have a register prefix (off by default; set `prefixes`). |
 | [`lint_713`](native-rules.md#lint_713) | A 'when others' alternative on an enumeration, instead of naming every value (off by default). |
-| [`lint_760`](native-rules.md#lint_760) | A subprogram whose body calls itself, which no synthesis tool accepts (off by default). |

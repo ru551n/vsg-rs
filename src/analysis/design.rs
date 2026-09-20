@@ -776,25 +776,29 @@ pub fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) -> Vec<Fi
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[
-    (
-        "lint_600",
-        "A combinational process does not assign a signal on every path, inferring a latch.",
-    ),
-    (
-        "lint_601",
-        "A signal is assigned by more than one concurrent statement.",
-    ),
-    (
-        "lint_602",
-        "A signal assigned by a clocked process does not have a register suffix (off by \
+pub const RULES: &[super::Rule] = &[
+    super::Rule {
+        id: "lint_600",
+        description: "A combinational process does not assign a signal on every path, inferring a latch.",
+        certainty: super::Certainty::Experimental,
+    },
+    super::Rule {
+        id: "lint_601",
+        description: "A signal is assigned by more than one concurrent statement.",
+        certainty: super::Certainty::Advisory,
+    },
+    super::Rule {
+        id: "lint_602",
+        description: "A signal assigned by a clocked process does not have a register suffix (off by \
          default; set `suffixes`).",
-    ),
-    (
-        "lint_603",
-        "A signal assigned by a clocked process does not have a register prefix (off by \
+        certainty: super::Certainty::Policy,
+    },
+    super::Rule {
+        id: "lint_603",
+        description: "A signal assigned by a clocked process does not have a register prefix (off by \
          default; set `prefixes`).",
-    ),
+        certainty: super::Certainty::Policy,
+    },
 ];
 
 #[cfg(test)]

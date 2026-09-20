@@ -31,6 +31,18 @@ fn write(dir: &Path, name: &str, text: &str) -> PathBuf {
     path
 }
 
+/// A configuration switching a whole class of lint rules on.
+///
+/// Only definite errors run unless asked. A test about how a finding is *reported* still needs
+/// a finding, and the advisory rules make the most convenient ones, so it says so out loud.
+fn enabling(dir: &Path, class: &str) -> PathBuf {
+    write(
+        dir,
+        &format!("{class}.yaml"),
+        &format!("rule:\n  group:\n    {class}:\n      disable: false\n"),
+    )
+}
+
 #[test]
 fn stdin_fix_prints_only_source() {
     let out = vsg(&["--stdin", "--fix"], UNFORMATTED);
@@ -285,9 +297,21 @@ fn stdin_analyses_the_buffer_not_the_file() {
     let path = file.to_str().unwrap();
 
     // The same bytes, from disk and from a buffer, say the same thing.
-    let disk = vsg(&[path, "--check", "lint"], "");
+    // lint_601 is advisory -- multiple drivers on a resolved type are legal VHDL -- so this
+    // test about where the bytes come from asks for it explicitly.
+    let advisory = enabling(dir.path(), "advisory");
+    let cfg = advisory.to_str().unwrap();
+    let disk = vsg(&[path, "--check", "lint", "-c", cfg], "");
     let buffer = vsg(
-        &["--stdin", "--stdin_filename", path, "--check", "lint"],
+        &[
+            "--stdin",
+            "--stdin_filename",
+            path,
+            "--check",
+            "lint",
+            "-c",
+            cfg,
+        ],
         two_drivers,
     );
     let lines = |out: &std::process::Output| {
@@ -304,7 +328,15 @@ fn stdin_analyses_the_buffer_not_the_file() {
     // drivers, the buffer does not.
     let fixed = two_drivers.replace("  q <= b;\n", "");
     let edited = vsg(
-        &["--stdin", "--stdin_filename", path, "--check", "lint"],
+        &[
+            "--stdin",
+            "--stdin_filename",
+            path,
+            "--check",
+            "lint",
+            "-c",
+            cfg,
+        ],
         &fixed,
     );
     assert!(
@@ -338,6 +370,8 @@ fn sarif_carries_related_locations_and_safe_fixes() {
             "style,lint",
             "--sarif",
             sarif.to_str().unwrap(),
+            "-c",
+            enabling(dir.path(), "advisory").to_str().unwrap(),
         ],
         "",
     );
@@ -401,6 +435,8 @@ fn sonarqube_report_carries_the_layer_as_the_issue_type() {
             "style,lint",
             "--sonarqube",
             report.to_str().unwrap(),
+            "-c",
+            enabling(dir.path(), "experimental").to_str().unwrap(),
         ],
         "",
     );
@@ -412,13 +448,10 @@ fn sonarqube_report_carries_the_layer_as_the_issue_type() {
     for issue in issues {
         assert_eq!(issue["engineId"], "vsg-rs");
         let rule = issue["ruleId"].as_str().unwrap_or_default();
-        // The layer decides the type: a lint finding is a bug, style is a code smell.
-        let expected = if rule.starts_with("lint_") {
-            "BUG"
-        } else {
-            "CODE_SMELL"
-        };
-        assert_eq!(issue["type"], expected, "{rule}");
+        // What the rule can prove decides the type, not which layer it came from: only a
+        // definite error is a bug. Every rule in this run is either a style rule or lint_600,
+        // which is an inference.
+        assert_eq!(issue["type"], "CODE_SMELL", "{rule}");
         let severity = issue["severity"].as_str().unwrap_or_default();
         assert!(
             ["INFO", "MINOR", "MAJOR", "CRITICAL"].contains(&severity),
@@ -433,11 +466,13 @@ fn sonarqube_report_carries_the_layer_as_the_issue_type() {
         // SonarQube counts columns from zero, so the report never carries a negative one.
         assert!(range["startColumn"].as_i64().unwrap_or_default() >= 0);
     }
-    // The latch this file infers is reported, as a bug, and as something to act on.
+    // The latch this file infers reaches the report, but not as a bug: lint_600 decides a
+    // process is combinational before it decides there is a latch, and a report that files an
+    // inference as a defect is a report nobody can act on without checking it first.
     assert!(
-        issues.iter().any(|i| i["ruleId"] == "lint_600"
-            && i["type"] == "BUG"
-            && i["severity"] == "CRITICAL"),
+        issues
+            .iter()
+            .any(|i| i["ruleId"] == "lint_600" && i["type"] == "CODE_SMELL"),
         "the lint layer reaches the report"
     );
     // The misplaced `begin` is layout, which --fix repairs, so it is filed as informational.
@@ -461,7 +496,18 @@ fn lint_is_a_subcommand_and_the_root_stays_vsg() {
     let bare = vsg(&[path, "--output_format", "syntastic"], "");
     assert!(String::from_utf8_lossy(&bare.stdout).contains("process_"));
     // `lint` reports its own rules and none of VSG's.
-    let lint = vsg(&["lint", path, "--output_format", "syntastic"], "");
+    let experimental = enabling(dir.path(), "experimental");
+    let lint = vsg(
+        &[
+            "lint",
+            path,
+            "--output_format",
+            "syntastic",
+            "-c",
+            experimental.to_str().unwrap(),
+        ],
+        "",
+    );
     let out = String::from_utf8_lossy(&lint.stdout);
     assert!(out.contains("lint_600"), "{out}");
     assert!(!out.contains("process_"), "only the lint layer runs: {out}");
@@ -474,6 +520,8 @@ fn lint_is_a_subcommand_and_the_root_stays_vsg() {
             "style,lint",
             "--output_format",
             "syntastic",
+            "-c",
+            experimental.to_str().unwrap(),
         ],
         "",
     );
@@ -507,9 +555,11 @@ fn layers_can_be_gated_and_explained() {
     );
     let path = file.to_str().unwrap();
     // The lint layer fails the run when gated on it, the style layer does not.
-    let on_lint = vsg(&["lint", path, "--fail_on", "lint"], "");
+    let experimental = enabling(dir.path(), "experimental");
+    let cfg = experimental.to_str().unwrap();
+    let on_lint = vsg(&["lint", path, "--fail_on", "lint", "-c", cfg], "");
     assert_eq!(on_lint.status.code(), Some(1));
-    let on_style = vsg(&["lint", path, "--fail_on", "style"], "");
+    let on_style = vsg(&["lint", path, "--fail_on", "style", "-c", cfg], "");
     assert_eq!(
         on_style.status.code(),
         Some(0),
@@ -519,7 +569,7 @@ fn layers_can_be_gated_and_explained() {
     let bad = vsg(&[path, "--fail_on", "nonsense"], "");
     assert_eq!(bad.status.code(), Some(1));
     // --statistics names the layer of each rule.
-    let stats = vsg(&["lint", path, "--statistics"], "");
+    let stats = vsg(&["lint", path, "--statistics", "-c", cfg], "");
     let out = String::from_utf8_lossy(&stats.stdout);
     assert!(out.contains("lint_600"), "{out}");
     assert!(out.contains("lint"), "{out}");
@@ -730,4 +780,67 @@ fn range_limits_fixing_to_the_given_lines() {
     assert!(fixed.contains("  x <= y;"), "{fixed}");
     // The line outside the range keeps its spacing.
     assert!(fixed.contains("  z<=w;"), "{fixed}");
+}
+
+#[test]
+fn a_default_lint_run_reports_only_what_it_can_prove() {
+    // The contract: a finding from a default run is something to correct, not something to
+    // weigh up. This file is full of things that are legal VHDL and might be meant.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = write(
+        dir.path(),
+        "dut.vhd",
+        "entity dut is\n  port (\n    a : in  bit;\n    q : out bit\n  );\nend entity dut;\n\n\
+         architecture rtl of dut is\n\n  type state_t is (idle, run, done);\n  \
+         signal state : state_t;\n  signal spare : bit;\n  signal floating : bit;\n\n\
+         begin\n\n  q <= a;\n  q <= floating;\n\n  case_p : process (state) is\n  begin\n    \
+         case state is\n      when idle => null;\n      when run => null;\n      \
+         when done => null;\n      when others => null;\n    end case;\n  end process case_p;\n\n\
+         end architecture rtl;\n",
+    );
+    let path = file.to_str().unwrap();
+
+    let quiet = vsg(&["lint", path, "--output_format", "syntastic"], "");
+    let out = String::from_utf8_lossy(&quiet.stdout);
+    assert!(
+        !out.contains("lint_"),
+        "a default run proves nothing about this file, so it says nothing: {out}"
+    );
+    assert_eq!(quiet.status.code(), Some(0));
+
+    // The same file, once the advisories are asked for, has plenty to say.
+    let asked = vsg(
+        &[
+            "lint",
+            path,
+            "--output_format",
+            "syntastic",
+            "-c",
+            enabling(dir.path(), "advisory").to_str().unwrap(),
+        ],
+        "",
+    );
+    let out = String::from_utf8_lossy(&asked.stdout);
+    for rule in ["lint_601", "lint_712", "lint_730"] {
+        assert!(out.contains(rule), "{rule} was asked for: {out}");
+    }
+}
+
+#[test]
+fn list_rules_says_which_rules_a_default_run_uses() {
+    let listed = vsg(&["--list_rules"], "");
+    let out = String::from_utf8_lossy(&listed.stdout);
+    // The class and the default are on the same line as the rule, because a reader deciding
+    // whether to trust a finding should not have to look them up on another page.
+    assert!(
+        out.lines().any(|l| l.starts_with("lint_740")
+            && l.contains("definite error")
+            && l.contains("[on]")),
+        "lint_740: {out}"
+    );
+    assert!(
+        out.lines()
+            .any(|l| l.starts_with("lint_712") && l.contains("advisory") && l.contains("[off]")),
+        "lint_712: {out}"
+    );
 }

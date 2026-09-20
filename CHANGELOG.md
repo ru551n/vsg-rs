@@ -7,6 +7,39 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 
 **Targets VSG 3.35.**
 
+* **The lint layer reports definite errors by default.** *This changes what a default run
+  reports.* Every rule now states how sure it is, and only those that can show a program cannot
+  do what it says run unless you ask for more: 53 of 71 today. A finding from a default run is
+  something to correct rather than something to weigh up, and an empty report means vsg-rs
+  proved nothing rather than that it merely stayed quiet.
+
+    Thirteen rules moved to **off by default**, each reporting something that is legal VHDL and
+    may well be meant: `lint_001`, `lint_002`, `lint_004`, `lint_005`, `lint_006`, `lint_600`,
+    `lint_601`, `lint_710`, `lint_711`, `lint_712`, `lint_720`, `lint_730` and `lint_750`. They
+    join `lint_602`, `lint_603`, `lint_700`, `lint_713` and `lint_760`, which were already off.
+    Two drivers on a resolved type are what a resolution function is for; an unused declaration
+    is legal; a state nothing enters may be reserved.
+
+    **To get the old behaviour**, ask for the classes:
+
+    ```yaml
+    rule:
+      group:
+        advisory:
+          disable: false
+        experimental:
+          disable: false
+    ```
+
+    Or name a rule, as before. Nothing was removed and no rule id changed. An enabled rule still
+    reports at `error` severity and still fails a build.
+
+    The class also decides how a finding is filed: only a definite error is a SonarQube **bug**,
+    so an advisory rule you switched on arrives as a code smell rather than claiming the design
+    is broken. `--list_rules` prints each rule's class and whether a default run uses it, and the
+    [rule reference](https://vsg-rs.readthedocs.io/en/latest/rule-reference/) is grouped by the
+    same thing — all of them read one registry, so they cannot drift apart.
+
 * **A language server.** `vsg-rs lsp` serves diagnostics, quick fixes and formatting over LSP,
   from the same library the command line uses: the same parser, formatter, analysis and
   configuration, so an editor and CI cannot disagree. It is deliberately narrow and does not

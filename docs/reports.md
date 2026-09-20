@@ -26,8 +26,14 @@ from a SARIF report as a vulnerability. A missing blank line is not a security f
 hundred of them would bury the ones that are. The generic format carries the type, so vsg-rs sets
 it from the layer the finding came from:
 
-* the lint layer (`lint_*`) arrives as a **bug** — it says the hardware is wrong;
-* style and layout arrive as a **code smell** — they say it reads badly.
+* a **definite error** arrives as a **bug** — it says the design cannot do what it says;
+* everything else arrives as a **code smell** — style and layout, which say the code reads
+  badly, and any [advisory, experimental or policy rule](lint.md#how-certain-is-a-finding) you
+  switched on, which states something exact whose significance is yours to judge.
+
+The type follows what the rule can prove rather than which layer it came from. A rule reporting
+a naming convention or a state nothing enters is not filing a bug, however deliberately it was
+enabled — a report that hands out its severest category freely is a report nobody reads.
 
 Severity separates the findings you have to think about from the ones you do not:
 
@@ -36,7 +42,7 @@ Severity separates the findings you have to think about from the ones you do not
 | `INFO` | `--fix` repairs it on its own — one run removes all of them at once |
 | `MINOR` | the rule is configured as a warning |
 | `MAJOR` | style that needs a person: a name, a port mode, an instantiation |
-| `CRITICAL` | a lint finding — a latch, two drivers, a clock crossing |
+| `CRITICAL` | a lint finding — by default a definite error, and whatever else you asked for |
 
 Fixability is asked of each finding rather than of its rule, because the same rule can offer a
 safe fix in one place and none in another. On open-logic that splits 33,693 issues into 32,003

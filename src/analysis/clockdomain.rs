@@ -165,10 +165,11 @@ pub fn check(parsed: &Parsed, file: &Path, synchronizers: &[String]) -> Vec<Find
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[(
-    "lint_700",
-    "A signal registered on one clock is used in logic on another, without a synchroniser.",
-)];
+pub const RULES: &[super::Rule] = &[super::Rule {
+    id: "lint_700",
+    description: "A signal registered on one clock is used in logic on another, without a synchroniser.",
+    certainty: super::Certainty::Experimental,
+}];
 
 #[cfg(test)]
 mod tests {

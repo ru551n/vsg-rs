@@ -1,9 +1,11 @@
-# Every native rule, including those off by default: a rule nobody runs is a rule nobody
-# notices reporting nonsense.
+# Every rule, whatever its class: a rule nobody runs is a rule nobody notices reporting
+# nonsense. Switching on the classes rather than listing ids means a new rule is measured the
+# day it is added, instead of the day someone remembers to add it here.
 rule:
-  lint_700:
-    disable: false
-  lint_713:
-    disable: false
-  lint_760:
-    disable: false
+  group:
+    advisory:
+      disable: false
+    experimental:
+      disable: false
+    policy:
+      disable: false

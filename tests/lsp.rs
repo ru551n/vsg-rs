@@ -8,6 +8,19 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
+/// Switch a class of lint rules on for everything under `dir`, the way a project does it: a
+/// `vsg-rs.yaml` the server discovers by walking up from the file.
+///
+/// Only definite errors run unless asked for. Most of these tests are about how a finding
+/// reaches the editor, and the advisory rules make the most convenient findings, so they say so.
+fn enable_class(dir: &std::path::Path, class: &str) {
+    std::fs::write(
+        dir.join("vsg-rs.yaml"),
+        format!("rule:\n  group:\n    {class}:\n      disable: false\n"),
+    )
+    .expect("write config");
+}
+
 fn frame(body: &serde_json::Value) -> Vec<u8> {
     let body = body.to_string();
     format!("Content-Length: {}\r\n\r\n{body}", body.len()).into_bytes()
@@ -294,6 +307,7 @@ fn diagnostics_carry_related_locations() {
     // A real file: a related location names a file, and naming one that is not there is not a
     // thing an editor ever asks about.
     let dir = tempfile::tempdir().expect("tempdir");
+    enable_class(dir.path(), "advisory");
     let file = dir.path().join("dut.vhd");
     std::fs::write(&file, TWO_DRIVERS).expect("write");
     let got = Session::start().talk(&[did_open(&file_uri(&file), TWO_DRIVERS)], 1);
@@ -373,6 +387,9 @@ fn project() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().expect("tempdir");
     let real = dir.path().join("project");
     std::fs::create_dir_all(real.join("src")).expect("mkdir");
+    // lint_004 is advisory: an unused declaration is legal VHDL. These tests are about the
+    // buffer reaching the analysis, so they ask for it.
+    enable_class(&real, "advisory");
     std::fs::write(
         real.join("vhdl_ls.toml"),
         "[libraries]\nmylib.files = [\"src/*.vhd\"]\n",
@@ -692,6 +709,7 @@ fn related_locations_survive_a_path_that_needs_encoding() {
     // related location was quietly dropped -- so a multiple-driver finding lost the other
     // driver depending on what the directory was called.
     let dir = tempfile::tempdir().expect("tempdir");
+    enable_class(dir.path(), "advisory");
     let awkward = dir.path().join("my design #2");
     std::fs::create_dir_all(&awkward).expect("mkdir");
     let file = awkward.join("dut.vhd");
@@ -822,6 +840,7 @@ fn a_finding_after_a_tab_points_at_the_right_character() {
                   -- \u{1f980}\n  signal q : bit;\nbegin\n\tq <= '1';\n\tq <= '0';\n\
                   end architecture rtl;\n";
     let dir = tempfile::tempdir().expect("tempdir");
+    enable_class(dir.path(), "advisory");
     let file = dir.path().join("tabbed.vhd");
     std::fs::write(&file, source).expect("write");
     let got = Session::start().talk(&[did_open(&file_uri(&file), source)], 1);
@@ -862,6 +881,7 @@ fn a_finding_after_a_tab_points_at_the_right_character() {
 /// A project under `dir` whose library map is `library`, holding one file with an unused signal.
 fn project_named(dir: &std::path::Path, library: &str) -> PathBuf {
     std::fs::create_dir_all(dir.join("src")).expect("mkdir");
+    enable_class(dir, "advisory");
     std::fs::write(
         dir.join("vhdl_ls.toml"),
         format!("[libraries]\n{library}.files = [\"src/*.vhd\"]\n"),

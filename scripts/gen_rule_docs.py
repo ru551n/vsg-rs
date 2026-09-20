@@ -23,45 +23,37 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 
-# Native rules, by what the analyser knows when it reports them. The order is the order the
-# reference lists them in; the text is the section's own explanation of its certainty.
-CATEGORIES: list[tuple[str, str, tuple[str, ...]]] = [
+# The classes a rule can belong to, in the order the reference lists them. The class itself
+# comes from the binary (`--list_rules`), which reads the same registry the configuration layer
+# reads to decide whether a rule runs; only the prose below lives here.
+CLASSES: list[tuple[str, str, str]] = [
     (
-        "Resolved semantics",
-        "Reported by the VHDL front end from a resolved symbol table: a name, its declaration "
-        "and its type. These need a library map; see [Project setup](project-setup.md).",
-        (),  # everything not listed below
+        "definite error",
+        "Definite errors",
+        "What a default run reports. Each one follows from the source and the resolved project: "
+        "the program cannot do what it says, whatever anyone intended by it. A finding here is "
+        "something to correct, not something to weigh up.",
     ),
     (
-        "Dataflow and structure",
-        "Reported by vsg-rs from the syntax tree plus the design's port connections. The "
-        "evidence is structural, so these run without a library map.",
-        (
-            "lint_601",
-            "lint_710",
-            "lint_711",
-            "lint_712",
-            "lint_720",
-            "lint_730",
-            "lint_740",
-            "lint_750",
-            "lint_751",
-        ),
+        "advisory",
+        "Advisory analysis",
+        "The fact is exact and the conclusion is a judgement. An unused declaration really is "
+        "unused; whether that is a mistake is not something the source says. **Off unless asked "
+        "for**, with `rule.group.advisory.disable: false` or one rule at a time.",
     ),
     (
-        "Experimental (off by default)",
-        "These infer design intent that the source does not state outright, so they cannot point "
-        "at the evidence the rules above can. `lint_700` is off unless you enable it; `lint_600` "
-        "is on, because a latch is derived from the assignments themselves once a process is "
-        "taken to be combinational.",
-        ("lint_600", "lint_700"),
+        "experimental",
+        "Experimental",
+        "Inferred rather than derived: the rule decides what the design is trying to be before "
+        "it decides whether it succeeds, so it cannot point at the evidence the rules above "
+        "can. **Off unless asked for**, with `rule.group.experimental.disable: false`.",
     ),
     (
-        "Style policy",
-        "A house's choice rather than a defect: what they report is legal and works today, and "
-        "matters only because of what the project means to do with the code. Off unless "
-        "configured.",
-        ("lint_602", "lint_603", "lint_713", "lint_760"),
+        "policy",
+        "Policy",
+        "A house's convention, which the language has no opinion about. **Off unless asked "
+        "for**, with `rule.group.policy.disable: false`; most also need configuring before they "
+        "mean anything.",
     ),
 ]
 
@@ -84,21 +76,24 @@ def list_rules() -> list[tuple[str, str, str]]:
         if not match:
             continue
         rule, rest = match.group(1), match.group(2)
-        if rest.startswith("lint (--check lint): "):
-            rules.append((rule, "lint", rest[len("lint (--check lint): ") :]))
+        lint = re.match(r"^lint \(--check lint\), (.+?) \[(on|off)\]: (.*)$", rest)
+        if lint:
+            rules.append((rule, f"lint:{lint.group(1)}", lint.group(3)))
         else:
             rules.append((rule, "style", rest))
     return rules
 
 
 def counts(rules: list[tuple[str, str, str]]) -> dict[str, int]:
-    lint = [r for r in rules if r[1] == "lint"]
-    named = {rule for _, _, group in CATEGORIES for rule in group}
+    lint = [r for r in rules if r[1].startswith("lint:")]
+    native = native_rule_anchors() | {r[0] for r in lint if r[0] >= "lint_600"}
     return {
         "vsg": len(rules) - len(lint),
         "lint": len(lint),
-        "resolved": len([r for r in lint if r[0] not in named]),
-        "native": len(named),
+        "resolved": len([r for r in lint if r[0] not in native]),
+        "native": len([r for r in lint if r[0] in native]),
+        "definite": len([r for r in lint if r[1] == "lint:definite error"]),
+        "optional": len([r for r in lint if r[1] != "lint:definite error"]),
     }
 
 
@@ -188,36 +183,40 @@ def cli_reference() -> str:
 
 
 def rule_reference(rules: list[tuple[str, str, str]]) -> str:
-    lint = {rule: description for rule, layer, description in rules if layer == "lint"}
-    named = {rule for _, _, group in CATEGORIES for rule in group}
+    """The reference, grouped by how sure each rule is."""
+    described = {rule: (layer, description) for rule, layer, description in rules}
+    detailed = native_rule_anchors()
     out = [
         GENERATED,
         "",
         "# Rule reference",
         "",
-        "Every rule of the lint layer, grouped by what the analyser knows when it reports one.",
-        "`vsg-rs --explain <rule>` prints the same description, and `--list_rules` lists these",
-        "alongside the VSG style rules.",
+        "Every rule of the lint layer, grouped by how sure it is that what it reports is wrong.",
+        "Only the first group runs unless you ask for more; `vsg-rs --list_rules` says the same",
+        "about every rule, and `vsg-rs --explain <rule>` prints the description again.",
         "",
     ]
-    for title, blurb, group in CATEGORIES:
-        chosen = (
-            sorted(rule for rule in lint if rule not in named)
-            if not group
-            else [rule for rule in group if rule in lint]
+    for key, title, blurb in CLASSES:
+        chosen = sorted(
+            rule for rule, (layer, _) in described.items() if layer == f"lint:{key}"
         )
         if not chosen:
             continue
         out += [f"## {title}", "", blurb, "", "| Rule | Reports |", "|---|---|"]
         out += [
-            f"| [`{rule}`](native-rules.md#{rule}) | {lint[rule]} |"
-            if rule in named
-            else f"| `{rule}` | {lint[rule]} |"
+            f"| [`{rule}`](native-rules.md#{rule}) | {described[rule][1]} |"
+            if rule in detailed
+            else f"| `{rule}` | {described[rule][1]} |"
             for rule in chosen
         ]
         out += [""]
     return "\n".join(out)
 
+
+def native_rule_anchors() -> set[str]:
+    """The rules that have a section of their own in `native-rules.md`."""
+    page = (DOCS / "native-rules.md").read_text(encoding="utf-8")
+    return set(re.findall(r'<a id="(lint_\d+)"></a>', page))
 
 def counts_page(rules: list[tuple[str, str, str]]) -> str:
     n = counts(rules)
@@ -233,6 +232,8 @@ def counts_page(rules: list[tuple[str, str, str]]) -> str:
             "|---|---|",
             f"| VSG style rules | {n['vsg']} |",
             f"| Lint layer, total | {n['lint']} |",
+            f"| — of those, run by default (definite errors) | {n['definite']} |",
+            f"| — of those, available on request | {n['optional']} |",
             f"| — of those, resolved-semantic (need a library map) | {n['resolved']} |",
             f"| — of those, native to vsg-rs | {n['native']} |",
             "",

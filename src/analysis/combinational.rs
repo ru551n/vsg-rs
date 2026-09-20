@@ -198,10 +198,11 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[(
-    "lint_720",
-    "A signal depends on itself through combinational logic, with no register in the loop.",
-)];
+pub const RULES: &[super::Rule] = &[super::Rule {
+    id: "lint_720",
+    description: "A signal depends on itself through combinational logic, with no register in the loop.",
+    certainty: super::Certainty::Advisory,
+}];
 
 #[cfg(test)]
 mod tests {

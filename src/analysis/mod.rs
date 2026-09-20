@@ -23,6 +23,90 @@ use std::path::Path;
 
 use crate::{Config, Parsed};
 
+/// How sure a rule is that what it reports is wrong.
+///
+/// This is the difference between "your program cannot do what it says" and "you may not have
+/// meant this". A default run reports only the first, so that a finding is something to correct
+/// rather than something to triage -- the whole value of the report is that it does not need
+/// reading twice.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Certainty {
+    /// The program is wrong: the analyser can show that what is written cannot be carried out.
+    /// A definite finding does not depend on what anyone intended. **On by default.**
+    Definite,
+    /// The fact is exact and the conclusion is a judgement. An unused declaration really is
+    /// unused; whether that is a mistake is not something the source says. **Off by default.**
+    Advisory,
+    /// Inferred rather than derived: the rule decides what the design is trying to be before it
+    /// decides whether it succeeds. **Off by default.**
+    Experimental,
+    /// A house's convention, which the language has no opinion about. **Off by default.**
+    Policy,
+}
+
+impl Certainty {
+    /// The configuration group that switches the whole class on or off.
+    #[must_use]
+    pub fn group(self) -> &'static str {
+        match self {
+            Certainty::Definite => "definite",
+            Certainty::Advisory => "advisory",
+            Certainty::Experimental => "experimental",
+            Certainty::Policy => "policy",
+        }
+    }
+
+    /// Whether a run that was told nothing reports this class.
+    #[must_use]
+    pub fn on_by_default(self) -> bool {
+        self == Certainty::Definite
+    }
+
+    /// What the class is called in a report or on the command line.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Certainty::Definite => "definite error",
+            Certainty::Advisory => "advisory",
+            Certainty::Experimental => "experimental",
+            Certainty::Policy => "policy",
+        }
+    }
+}
+
+/// One rule of the lint layer: what it is called, what it reports, and how sure it is.
+#[derive(Copy, Clone, Debug)]
+pub struct Rule {
+    pub id: &'static str,
+    pub description: &'static str,
+    pub certainty: Certainty,
+}
+
+/// Every rule of the lint layer, from the modules that implement them.
+///
+/// The one list. What a rule reports, whether a default run runs it, what the documentation
+/// says about it and how a report classifies it all read this, so none of them can drift from
+/// another.
+pub fn rules() -> impl Iterator<Item = Rule> {
+    lint::rules()
+        .chain(design::RULES.iter().copied())
+        .chain(elaborate::RULES.iter().copied())
+        .chain(fsm::RULES.iter().copied())
+        .chain(combinational::RULES.iter().copied())
+        .chain(clockdomain::RULES.iter().copied())
+        .chain(width::RULES.iter().copied())
+        .chain(choices::RULES.iter().copied())
+        .chain(calls::RULES.iter().copied())
+}
+
+/// How sure the rule with this id is, or `None` if it is not a rule of the lint layer.
+#[must_use]
+pub fn certainty_of(id: &str) -> Option<Certainty> {
+    rules()
+        .find(|rule| rule.id == id)
+        .map(|rule| rule.certainty)
+}
+
 /// How a project wants registers named (`lint_602`, `lint_603`), from its configuration. Both
 /// rules are off unless configured, and a rule that is off contributes nothing.
 ///

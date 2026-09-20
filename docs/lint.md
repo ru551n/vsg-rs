@@ -1,7 +1,22 @@
 # Static analysis
 
 The root command is VSG's: style rules, applied per file, byte-identical reports. `vsg-rs lint`
-runs the other layer — code that parses and is legal, but is probably not what anyone meant.
+runs the other layer.
+
+**A default run reports definite errors.** Every finding follows from the source and the
+resolved project: the program cannot do what it says, whatever anyone intended by it. Nothing is
+reported because it looks unusual, because it is probably a mistake, or because some tool
+downstream would refuse it.
+
+That is a promise about your attention. A finding is something to correct rather than something
+to weigh up, so an empty report means vsg-rs found nothing it can prove, and a report with one
+line in it means it found something real.
+
+Rules that answer broader questions — whether a declaration is used, whether a state can be
+reached, whether a name follows the house convention — are still here, and still exact about the
+facts they state. They are off unless asked for, because what to conclude from the fact depends
+on what you meant rather than on what the language requires. See
+[asking for more](#asking-for-more).
 
 ```sh
 vsg-rs --recursive src                          # style
@@ -55,20 +70,44 @@ both cases the alternative was a rule that fires on correct code.
 
 ### How certain is a finding
 
-Rules differ in the evidence behind them, and the [rule reference](rule-reference.md) groups them
-by it:
+Every rule carries a class, and the class decides whether a default run uses it. The
+[rule reference](rule-reference.md) is grouped by it, `--list_rules` prints it beside each rule,
+and the configuration layer reads the same answer, so the three cannot disagree.
 
-| Group | Evidence | What a finding means |
+| Class | What a finding means | Default |
 |---|---|---|
-| Resolved semantics | a resolved symbol table: a name, its declaration, its type | a fact about the code |
-| Dataflow and structure | the syntax tree plus port connections | proven from structure |
-| Experimental | inferred design intent | weaker; `lint_700` is off by default |
-| Style policy | a naming convention you configured | not analysis at all |
+| **Definite error** | the program cannot do what it says | **on** |
+| **Advisory** | an exact fact whose significance depends on what you meant | off |
+| **Experimental** | inferred design intent, not derived from the source | off |
+| **Policy** | a convention the language has no opinion about | off |
 
-Two rules infer rather than derive, because both must decide what a process *is* before they can
-say anything: `lint_600` (latch inference) and `lint_700` (clock-domain crossings). `lint_700`
-goes further and infers which signal is a clock, so it is **off unless you enable it**. A default
-run reports only what it can point at.
+The line between the first two is what the source has to say about it. That an enumeration value
+is never assigned is a fact; that it is a *mistake* is a guess about the design, so `lint_710` is
+advisory. That a configuration names an architecture nothing declares is also a fact, and there
+is nothing to guess about what it means: elaboration fails. That one is definite.
+
+## Asking for more
+
+A whole class at a time:
+
+```yaml
+rule:
+  group:
+    advisory:
+      disable: false
+```
+
+or one rule, which works the same as it always did:
+
+```yaml
+rule:
+  lint_712:
+    disable: false
+```
+
+An enabled rule reports at `error` severity like any other, so it fails a build the same way.
+If you want it reported without failing anything, set `severity: warning` on the rule or the
+group.
 
 ## What it does not try to infer
 
@@ -76,21 +115,23 @@ run reports only what it can point at.
 * **What a generic will be**, so a width or range depending on one is not evaluated.
 * **What an instance does internally** when its entity is not in the analysed set: everything it
   touches is treated as driven, so nothing is reported about it.
-* **Whether two drivers are deliberate.** `lint_601` reports them even for resolved types such as
-  `std_logic`, where a tri-state is legal, because far more often it is a mistake. Waive the
-  deliberate ones.
+* **Whether two drivers are deliberate.** Two drivers on a resolved type such as `std_logic` are
+  legal VHDL -- that is what a resolution function is for -- so `lint_601` is advisory and off
+  unless asked for. A narrower rule for drivers the language does not permit needs the resolved
+  type, which the analyser does not have yet.
 * **Anything requiring elaboration**: resource use, timing, reachable state.
 
 ## Rules
 
-The [rule reference](rule-reference.md) lists every rule with what it reports, grouped by
-evidence. `vsg-rs --explain lint_600` prints the same for one rule, and `--list_rules` prints all
-of them alongside the style rules.
+The [rule reference](rule-reference.md) lists every rule with what it reports, grouped by how
+sure it is. `vsg-rs --explain lint_740` prints the same for one rule, and `--list_rules` prints
+all of them alongside the style rules, each with its class and whether a default run uses it.
 
 !!! important "Most of them need a library map"
 
-    Resolving a name means knowing which library each file belongs to. Without a `vhdl_ls.toml`
-    only 13 rules run, and the run says so. See [Project setup](project-setup.md).
+    Resolving a name means knowing which library each file belongs to. Without a
+    `vhdl_ls.toml` most of the layer does not run, and the run says how much. See
+    [Project setup](project-setup.md).
 
 ## What the structural checks assume
 

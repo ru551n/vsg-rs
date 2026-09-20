@@ -951,19 +951,22 @@ impl Config {
     /// Settings of any VSG rule by id, starting from VSG's defaults.
     pub fn rule_by_id(&self, id: &str) -> Option<RuleSettings> {
         // The lint layer's rules are not VSG's, so they have no entry in its defaults: they are
-        // enabled and error by default, and the configuration layers over that as usual.
+        // error by default, and the configuration layers over that as usual.
         if id.starts_with("lint_") {
-            // Most lint rules are on once the layer runs. Two kinds start off: house style,
-            // which is a project's choice, and the experimental rules, which infer design intent
-            // rather than deriving it and so cannot point at the evidence the others can.
-            let on_by_default = !matches!(
-                id,
-                "lint_602" | "lint_603" | "lint_700" | "lint_713" | "lint_760"
-            );
+            // What a rule can prove decides whether it runs unless asked for. A default run
+            // reports only what follows from the source, so that a finding is something to
+            // correct rather than something to weigh up; every rule that depends on intent,
+            // inference or house style is there to be switched on deliberately.
+            //
+            // The class is the rule's own, read from the registry, so this cannot drift from
+            // what the documentation and `--list_rules` say about the same rule.
+            let certainty = crate::analysis::certainty_of(id)?;
+            // Two groups: a project can switch on a whole class (`rule.group.advisory`) as
+            // readily as the layer (`rule.group.lint`) or one rule.
             return Some(self.layered(
                 id,
-                &["lint"],
-                on_by_default,
+                &["lint", certainty.group()],
+                certainty.on_by_default(),
                 Severity::Error,
                 BTreeMap::new(),
             ));

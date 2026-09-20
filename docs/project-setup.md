@@ -19,7 +19,8 @@ WARNING: no vhdl_ls.toml found, so 53 of 66 lint rules did not run. They need to
 
 The run prints the counts for the version you have; [rule counts](rule-counts.md) lists them.
 
-A clean report from 13 rules must not be mistaken for a clean report from all of them.
+A clean report from a handful of rules must not be mistaken for a clean report from all of
+them.
 
 ## The library map
 
@@ -52,7 +53,7 @@ Analysis covers the files the map lists, not only the files named on the command
 what makes cross-file rules possible: `vsg-rs lint src/one.vhd` can still report that a name in
 `one.vhd` refers to a declaration in `two.vhd`.
 
-Files outside the map are analysed on their own. They get the 13 rules that need no resolution,
+Files outside the map are analysed on their own. They get only the rules that need no resolution,
 and are reported as unanalysed rather than silently passing.
 
 ## Telling RTL from testbenches

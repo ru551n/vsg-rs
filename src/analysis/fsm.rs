@@ -236,15 +236,17 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[
-    (
-        "lint_710",
-        "A state of an enumerated state machine is never entered.",
-    ),
-    (
-        "lint_711",
-        "A state of an enumerated state machine has no exit.",
-    ),
+pub const RULES: &[super::Rule] = &[
+    super::Rule {
+        id: "lint_710",
+        description: "A state of an enumerated state machine is never entered.",
+        certainty: super::Certainty::Advisory,
+    },
+    super::Rule {
+        id: "lint_711",
+        description: "A state of an enumerated state machine has no exit.",
+        certainty: super::Certainty::Advisory,
+    },
 ];
 
 #[cfg(test)]

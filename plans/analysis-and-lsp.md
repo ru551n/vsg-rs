@@ -229,12 +229,52 @@ the point. **Size** large. **Risk** medium.
 `(SrcPos, EntRef)` for a whole file in one call. **Size** small-to-medium. **Risk** low.
 **Blocks** shadowing, call graph, reference graph.
 
+**Half done, and the other half is bigger than this says — measured 2026-09-20 (§10.7).** The
+`Project` is kept (#56), which is what made the editor fast. The query half was built and
+reverted: `public_symbols` reaches only the public surface, and the rule it would feed does not
+clear the bar.
+
 ### PR 8+ — New exact diagnostics
 In dependency order, each small and independently valuable: unused/duplicate `use` and `library`
 clauses · exact case analysis (missing/duplicate/overlapping choices, redundant `others`) ·
 shadowing · subprogram call graph (unused local subprogram, recursion cycles) · component/entity
 association consistency · project reference graph. Each must clear the existing bar: **zero
 findings on cnn_accel, VUnit and open-logic** unless confirmed real.
+
+**Mostly superseded — audited 2026-09-20.** The front-end rules that landed with the lint layer
+already report: unused and duplicate `use`/`library` clauses (`lint_004`, `005`, `006`, `108`),
+shadowing (`lint_101`), association consistency (`lint_400`–`404`), and unused subprograms
+(`lint_004`). Missing and overlapping case choices are compile errors the front end names.
+Redundant `others` shipped as `lint_712`, and naming every value instead of `others` as
+`lint_713`. What is left of this item is the reference graph and recursion cycles, both blocked
+on §10.7.
+
+### 10.7 Spike result: what the kept symbol table can and cannot answer
+
+Measured against `vhdl_lang` 0.88 with the `Project` kept, by building `Analyser::declarations()`
+over `public_symbols` + `find_all_references` and running it on the corpora.
+
+**`public_symbols` is the public surface only.** For an entity whose architecture declares
+`signal orphan` and `constant dead`, the query returns six declarations — the entity, its two
+ports, the architecture, and two `std.standard` types — and neither of the dead ones. An
+architecture's internal declarations are not public symbols, so a cross-file reference graph
+built this way cannot see the objects whose deadness would be worth reporting.
+
+**The surface it does reach is noise.** "Declared and never referenced" over it gives 521
+findings on open-logic: 203 architectures (never named by anything, by construction), 252
+constants and 35 array types — a library's public API, which exists to be used from outside it.
+Narrowing to architecture-local objects gives zero on all three corpora, but only because the
+query cannot see them at all; a positive-control file confirmed that rather than the code
+being clean.
+
+**Consequence.** Both remaining PR 8+ items need a custom `ast::search::Searcher` over
+`vhdl_lang`'s AST rather than the `Project` query API, because `DesignRoot` is not public
+(§10.6). That is the real size of the work, and it is more than "small-to-medium".
+
+Recursion in particular cannot be done syntactically: scanning for a function whose body names
+itself finds 1871 candidates in VUnit and 3397 in cnn_accel, nearly all of them overload
+resolution (`to_slv` calling a different `to_slv`) rather than recursion. Telling those apart is
+exactly what the resolved call graph is for.
 
 ### Extension repository `vsg-rs-vscode`
 

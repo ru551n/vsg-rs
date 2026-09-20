@@ -338,7 +338,7 @@ fn intersection(sets: Vec<BTreeSet<String>>) -> BTreeSet<String> {
 
 /// The statements a node holds: those of its `SequenceOfStatements`, or its own children when it
 /// keeps them directly, as a process does.
-fn body(node: &SyntaxNode) -> Vec<SyntaxNode> {
+pub(super) fn body(node: &SyntaxNode) -> Vec<SyntaxNode> {
     let sequences: Vec<SyntaxNode> = node
         .children()
         .filter(|c| c.kind() == NodeKind::SequenceOfStatements)

@@ -64,8 +64,11 @@ What a default run reports. Each one follows from the source and the resolved pr
 | `lint_501` | A next statement outside a loop. |
 | `lint_502` | A loop label that does not name an enclosing loop. |
 | [`lint_740`](native-rules.md#lint_740) | A vector is assigned to one of a different width. |
+| [`lint_741`](native-rules.md#lint_741) | A vector is compared with one of a different width, which is never equal. |
 | [`lint_751`](native-rules.md#lint_751) | A configuration names an architecture that is not declared. |
 | [`lint_770`](native-rules.md#lint_770) | A process with no sensitivity list and no wait statement, which can never suspend. |
+| [`lint_771`](native-rules.md#lint_771) | A function that can reach the end of its body without returning a value. |
+| [`lint_772`](native-rules.md#lint_772) | A statement that nothing can reach. |
 | [`lint_780`](native-rules.md#lint_780) | An index that is outside the declared range of the array it selects from. |
 | [`lint_781`](native-rules.md#lint_781) | A division, `mod` or `rem` whose divisor is written as zero. |
 | [`lint_782`](native-rules.md#lint_782) | An assignment of a value outside the declared range of its target. |

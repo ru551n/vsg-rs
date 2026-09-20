@@ -7,8 +7,8 @@ Quoted by other pages through a snippet, so no page states a number of its own.
 | Set | Rules |
 |---|---|
 | VSG style rules | 972 |
-| Lint layer, total | 78 |
-| — of those, run by default (definite errors) | 57 |
+| Lint layer, total | 81 |
+| — of those, run by default (definite errors) | 60 |
 | — of those, available on request | 21 |
 | — of those, resolved-semantic (need a library map) | 56 |
-| — of those, native to vsg-rs | 22 |
+| — of those, native to vsg-rs | 25 |

@@ -439,6 +439,39 @@ mentioning a generic is left alone, so most parameterised RTL is out of its reac
 
 ---
 
+<a id="lint_741"></a>
+## lint_741: Vector comparison width mismatch
+
+**Detects** a vector compared with one of a different width.
+
+**Why it matters** array equality is defined as equal lengths with matching elements, so
+comparing a four-bit vector with a three-bit literal is not an error: it is simply always false.
+The design elaborates, the simulation runs, and the branch is never taken. GHDL says nothing at
+all; NVC warns.
+
+**Evidence** the declared range of the object and the length of the literal or the other object,
+when both are certain.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+    a : in bit_vector(3 downto 0);
+  ...
+  q <= '1' when a = "000" else '0';
+```
+
+```text
+lint_741 | Error | 5 | 'a' is 4 bits and is compared with '"000"', which is 3, so the
+                       comparison is always false
+```
+
+**Limitations** the same restraint as `lint_740`. Both sides must be a whole object or a vector
+literal, so a slice, an index, a concatenation or a function call is left alone. A string whose
+characters are not `std_logic`'s is text rather than a vector and is never measured, so a
+`report` message is safe from it.
+
+---
+
 <a id="lint_712"></a>
 ## lint_712 — Unreachable `when others`
 
@@ -696,6 +729,83 @@ process that calls one is left alone rather than resolved. A `wait` that looks u
 counts, because deciding otherwise is a second proof this rule does not need and would risk
 reporting a process that does suspend. Every form of sensitivity list counts, `process (all)`
 included.
+
+---
+
+<a id="lint_771"></a>
+## lint_771: Function that can fall through
+
+**Detects** a function whose body can reach its end without returning a value.
+
+**Why it matters** reaching the end of a function without a `return` is an error, and it is the
+one this layer exists for: the compilers are silent, and GHDL reports `missing return in
+function` only at run time, only if the run reaches the call, and only with an argument that
+takes the silent path. The answer was in the source the whole time.
+
+**Evidence** the statements of the body and which of them transfer control.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+  function polynomial (width : natural) return bit_vector is
+  begin
+    case width is
+      when 8 => return x"D5";
+      when others => report "unsupported" severity error;
+    end case;
+  end function;
+```
+
+```text
+lint_771 | Error | 1 | 'polynomial' can reach the end of its body without returning a
+                       value, which is an error when it does
+```
+
+That example is open-logic's, near enough: the same function appears twice in that project, once
+with a closing `return` and once without.
+
+**Limitations** everything unclear counts as an ending, so the rule accuses nothing it cannot
+show. A loop is assumed to return, since reasoning about whether one runs is a second proof this
+rule does not need. `assert false` is an ending whatever severity it carries, because an author
+who writes it has said the path cannot happen and a rule in the definite class does not argue
+with that. A `case` needs no `when others`: the LRM requires its choices to cover the subtype, so
+one that analyses at all is exhaustive, and an incomplete one is the front end's finding rather
+than this one's.
+
+---
+
+<a id="lint_772"></a>
+## lint_772: Statement nothing can reach
+
+**Detects** a statement after one that always transfers control away.
+
+**Why it matters** unreachable code is either a mistake or a leftover, and neither compiler
+mentions it.
+
+**Evidence** the position of a `return`, `exit` or `next` that carries no condition, and a
+statement after it in the same list.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+  function g (x : integer) return integer is
+  begin
+    return x;
+    return x + 1;
+  end function;
+```
+
+```text
+lint_772 | Error | 4 | Nothing reaches this statement: the `return` above it always
+                       transfers control
+```
+
+**Limitations** an assertion is not a transfer of control. It reports and execution carries on,
+so defensive code after one is reached and is not reported, even at `severity failure`. `exit
+when` and `next when` are conditional and transfer nothing this rule can rely on. A
+`-- synthesis translate_off` region between the two statements is respected: code that is
+unreachable in simulation and reachable in synthesis is how a design asks which of the two is
+reading it, and `in_simulation` in hdl-modules is exactly that.
 
 ---
 

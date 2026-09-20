@@ -91,6 +91,85 @@ fn widths(node: &SyntaxNode, out: &mut BTreeMap<String, u64>) {
 /// What can stand before the names in a declaration, and is not one.
 const KEYWORDS: &[&str] = &["signal", "variable", "constant", "shared", "file"];
 
+/// The width of a vector literal: `"0101"` is four bits, `x"FF"` eight, `o"7"` three.
+///
+/// `None` for anything else, including a string that is text rather than a vector, so a `report`
+/// message is never measured as though it were bits.
+fn literal_width(token: &str) -> Option<u64> {
+    let (base, digits) = token.split_once('"')?;
+    let digits = digits.strip_suffix('"')?;
+    // An underscore separates groups in a bit string literal and carries no bits.
+    let digits: String = digits.chars().filter(|c| *c != '_').collect();
+    let per_digit = match base.to_ascii_lowercase().as_str() {
+        "x" => 4,
+        "o" => 3,
+        "b" => 1,
+        // A plain string literal is a vector only if every character is one of `std_logic`'s.
+        "" if !digits.is_empty() && digits.chars().all(|c| "01uxzwlh-".contains(c)) => 1,
+        _ => return None,
+    };
+    Some(digits.chars().count() as u64 * per_digit)
+}
+
+/// `lint_741`: the two sides of an equality are vectors of different lengths.
+///
+/// `a = "000"` where `a` is four bits is legal VHDL, and always false: array equality is defined
+/// as equal lengths with matching elements. Nothing rejects it, so the design elaborates, runs,
+/// and silently never takes the branch. GHDL says nothing at all, NVC warns.
+fn comparisons(
+    parsed: &Parsed,
+    architecture: &SyntaxNode,
+    known: &BTreeMap<String, u64>,
+    file: &Path,
+    findings: &mut Vec<Finding>,
+) {
+    let tokens = all_tokens(architecture);
+    let words: Vec<String> = tokens.iter().map(lower).collect();
+    for at in 0..words.len() {
+        if words[at] != "=" && words[at] != "/=" {
+            continue;
+        }
+        let (Some(before), after) = (at.checked_sub(1), at + 1) else {
+            continue;
+        };
+        if after >= words.len() {
+            continue;
+        }
+        // A name beside a parenthesis is an index, a slice or a call, whose width is not the
+        // width of the name.
+        if words.get(after + 1).is_some_and(|w| w == "(") || words[before] == ")" {
+            continue;
+        }
+        let width = |i: usize| {
+            known
+                .get(&words[i])
+                .copied()
+                .or_else(|| literal_width(&words[i]))
+        };
+        let (Some(left), Some(right)) = (width(before), width(after)) else {
+            continue;
+        };
+        if left == right {
+            continue;
+        }
+        let (line, column) = parsed.line_col(tokens[before].text_range().start);
+        findings.push(Finding {
+            file: file.to_path_buf(),
+            rule: "lint_741",
+            line,
+            column,
+            message: format!(
+                "'{}' is {left} bits and is compared with '{}', which is {right}, \
+                 so the comparison is always {}",
+                words[before],
+                words[after],
+                if words[at] == "=" { "false" } else { "true" }
+            ),
+            related: Vec::new(),
+        });
+    }
+}
+
 pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
     let mut findings = Vec::new();
     let mut ports = BTreeMap::new();
@@ -103,6 +182,7 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
         if known.is_empty() {
             continue;
         }
+        comparisons(parsed, &architecture, &known, file, &mut findings);
         for kind in [
             NodeKind::ConcurrentSimpleSignalAssignment,
             NodeKind::SimpleWaveformAssignment,
@@ -159,15 +239,33 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[super::Rule] = &[super::Rule {
-    id: "lint_740",
-    description: "A vector is assigned to one of a different width.",
-    certainty: super::Certainty::Definite,
-}];
+pub const RULES: &[super::Rule] = &[
+    super::Rule {
+        id: "lint_740",
+        description: "A vector is assigned to one of a different width.",
+        certainty: super::Certainty::Definite,
+    },
+    super::Rule {
+        id: "lint_741",
+        description: "A vector is compared with one of a different width, which is never equal.",
+        certainty: super::Certainty::Definite,
+    },
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_literal_measures_its_own_bits() {
+        assert_eq!(literal_width("\"0101\""), Some(4));
+        assert_eq!(literal_width("x\"ff\""), Some(8));
+        assert_eq!(literal_width("o\"7\""), Some(3));
+        assert_eq!(literal_width("b\"1010_1010\""), Some(8));
+        // Text, not a vector: a `report` message is not eight bits wide.
+        assert_eq!(literal_width("\"hello, world\""), None);
+        assert_eq!(literal_width("count"), None);
+    }
 
     fn check_source(source: &str) -> Vec<String> {
         let parsed = Parsed::new(source.as_bytes().to_vec());

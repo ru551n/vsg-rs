@@ -2,6 +2,8 @@ open-logic lint_600 23
 open-logic lint_602 532
 open-logic lint_603 546
 open-logic lint_712 1
+open-logic lint_771 1
 vunit lint_601 1
 vunit lint_602 247
 vunit lint_603 248
+vunit lint_771 1

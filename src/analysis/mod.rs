@@ -15,6 +15,7 @@ pub mod combinational;
 pub mod design;
 pub mod elaborate;
 pub mod evaluated;
+pub mod flow;
 pub mod fsm;
 pub mod lint;
 pub mod resetdomain;
@@ -103,6 +104,7 @@ pub fn rules() -> impl Iterator<Item = Rule> {
         .chain(calls::RULES.iter().copied())
         .chain(suspend::RULES.iter().copied())
         .chain(evaluated::RULES.iter().copied())
+        .chain(flow::RULES.iter().copied())
 }
 
 /// How sure the rule with this id is, or `None` if it is not a rule of the lint layer.
@@ -183,5 +185,6 @@ pub fn per_file(
         .chain(choices::check(parsed, path))
         .chain(suspend::check(parsed, path))
         .chain(evaluated::check(parsed, path))
+        .chain(flow::check(parsed, path))
         .collect()
 }

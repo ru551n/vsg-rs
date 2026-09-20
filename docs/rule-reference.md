@@ -65,6 +65,7 @@ What a default run reports. Each one follows from the source and the resolved pr
 | `lint_502` | A loop label that does not name an enclosing loop. |
 | [`lint_740`](native-rules.md#lint_740) | A vector is assigned to one of a different width. |
 | [`lint_751`](native-rules.md#lint_751) | A configuration names an architecture that is not declared. |
+| [`lint_770`](native-rules.md#lint_770) | A process with no sensitivity list and no wait statement, which can never suspend. |
 
 ## Advisory analysis
 

@@ -16,6 +16,7 @@ pub mod design;
 pub mod elaborate;
 pub mod fsm;
 pub mod lint;
+pub mod suspend;
 pub mod testbench;
 pub mod width;
 
@@ -97,6 +98,7 @@ pub fn rules() -> impl Iterator<Item = Rule> {
         .chain(width::RULES.iter().copied())
         .chain(choices::RULES.iter().copied())
         .chain(calls::RULES.iter().copied())
+        .chain(suspend::RULES.iter().copied())
 }
 
 /// How sure the rule with this id is, or `None` if it is not a rule of the lint layer.
@@ -174,5 +176,6 @@ pub fn per_file(
         .chain(clockdomain::check(parsed, path, synchronizers))
         .chain(width::check(parsed, path))
         .chain(choices::check(parsed, path))
+        .chain(suspend::check(parsed, path))
         .collect()
 }

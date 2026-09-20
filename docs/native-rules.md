@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The fifteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The sixteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -538,6 +538,47 @@ calling another `to_slv` is the normal case. Only the resolved symbol table tell
 to call each other, and a call to a name that has one resolves to the declaration rather than to
 the body, so a mutual cycle is not visible here. Under-reporting is the right way to be wrong
 about this.
+
+---
+
+<a id="lint_770"></a>
+## lint_770 — Process that can never suspend
+
+**Detects** a process with no sensitivity list and no `wait` statement.
+
+**Why it matters** a process repeats for ever. What stops it monopolising the simulation is that
+it suspends: at a `wait`, or at the end of its body when it has a sensitivity list, which is the
+same thing written differently. With neither, it reaches the end, starts again, and never yields
+— time never advances and the simulation makes no progress. This is not a design that behaves
+oddly; it is a design that cannot run.
+
+Both simulators say so at analysis. GHDL: *"infinite loop for this process without a wait
+statement"*. NVC: *"potential infinite loop in process with no sensitivity list and no wait
+statements"*.
+
+**Evidence** the process's own syntax: its sensitivity list, its `wait` statements, and the
+procedure calls in its body.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+  p : process
+  begin
+    x <= '1';
+  end process p;
+```
+
+```text
+lint_770 | Error | 8 | Process 'p' can never suspend: it has no sensitivity list and no
+                       wait statement
+```
+
+**Limitations** NVC's *potential* is the reason for them. A process whose body calls a procedure
+may suspend inside it — a procedure, unlike a function, is allowed to contain a `wait` — so a
+process that calls one is left alone rather than resolved. A `wait` that looks unreachable still
+counts, because deciding otherwise is a second proof this rule does not need and would risk
+reporting a process that does suspend. Every form of sensitivity list counts, `process (all)`
+included.
 
 ---
 

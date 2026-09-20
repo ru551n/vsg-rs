@@ -979,3 +979,34 @@ fn editing_the_library_map_rebuilds_the_project() {
         "the rewritten map is read, not the one from start-up: {after:?}"
     );
 }
+
+#[test]
+fn a_definite_error_reaches_the_editor_as_the_command_line_sees_it() {
+    // The contract for a new rule: no LSP-specific analysis, so an unsaved buffer gets exactly
+    // what the command line would report for the same bytes. lint_770 is a default rule, so
+    // this needs no configuration at all.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
+                  signal x : bit;\nbegin\n  p : process\n  begin\n    x <= '1';\n  \
+                  end process p;\nend architecture rtl;\n";
+    let file = dir.path().join("dut.vhd");
+    std::fs::write(&file, source).expect("write");
+
+    let got = Session::start().talk(&[did_open(&file_uri(&file), source)], 1);
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .unwrap_or_else(|| panic!("diagnostics were published; got {got:#?}"));
+    let stuck = published["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .find(|d| d["code"] == "lint_770")
+        .expect("the process that cannot suspend is reported");
+    // Line 7 in the source, zero-based 6.
+    assert_eq!(stuck["range"]["start"]["line"], 6, "{stuck:#?}");
+    assert!(
+        stuck["message"].as_str().is_some_and(|m| m.contains("'p'")),
+        "{stuck:#?}"
+    );
+}

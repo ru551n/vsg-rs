@@ -15,16 +15,8 @@ because each new fact makes several rules possible at once:
 
 * **A project reference graph** — every place a declaration is read or written, across files.
   Several rules approximate this per file today and are narrower than they need to be.
-* **Case analysis against the type's value set**, so a missing choice is reported from the type
-  rather than from the shape of the statement.
-* **A subprogram call graph**, which makes recursion and unreachable subprograms reportable.
-* **Shadowing and visibility**, reported from the symbol table rather than from syntax.
-
-## Related locations
-
-A finding currently names one position. Multiple drivers, shadowed declarations and combinational
-loops are all statements about several places at once, and the report formats
-([SARIF](reports.md) in particular) can carry them. Findings should say "here, and also here".
+* **A subprogram call graph**, which makes recursion reportable. Subprograms nothing calls are
+  already reported, by the front end's `lint_004`.
 
 ## Interface consistency
 
@@ -45,6 +37,7 @@ Stating these saves everyone time:
 * elaboration, synthesis, timing or resource estimation — see [non-goals](index.md#what-it-is-not);
 * a custom rule language. Local rules work through VSG's own plugin mechanism;
 * certification or compliance mappings;
-* additional editor integrations beyond the [documented ones](editors.md) — the stdin contract is
-  stable and generic, and editors are better served by it than by bespoke plugins;
+* editor plugins beyond the [documented ones](editors.md) — every editor with a language client
+  can run `vsg-rs lsp`, and every editor that pipes a buffer through a command can run
+  `--stdin --fix`. Both contracts are generic, so a bespoke plugin per editor earns nothing;
 * heuristic rules that cannot reach zero findings on the validation corpora.

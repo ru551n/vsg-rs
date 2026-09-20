@@ -408,14 +408,100 @@ fn variable_latches(process: &SyntaxNode, statements: &[SyntaxNode]) -> Vec<(Str
         return Vec::new();
     }
     let mut out: BTreeMap<String, usize> = BTreeMap::new();
-    let mut assigned: BTreeSet<String> = BTreeSet::new();
+    read_before_assigned(statements, &declared, &BTreeSet::new(), &mut out);
+    out.into_iter().collect()
+}
+
+/// The statements a node keeps in a `SequenceOfStatements`: the body of an `if` branch, a `case`
+/// alternative or a loop. Unlike [`body`] this never falls back to the node's own children, so a
+/// branch with no statements in it reads as empty rather than as its own condition.
+fn sequence(node: &SyntaxNode) -> Vec<SyntaxNode> {
+    node.children()
+        .filter(|c| c.kind() == NodeKind::SequenceOfStatements)
+        .flat_map(|c| c.children().collect::<Vec<_>>())
+        .collect()
+}
+
+/// What a statement reads before any body of its own runs: an `if` or `elsif` condition, the
+/// expression a `case` selects on, a loop's iteration scheme.
+fn header_reads(node: &SyntaxNode) -> Vec<(String, usize)> {
+    let mut out = Vec::new();
+    for child in node.children().filter(|c| {
+        !matches!(
+            c.kind(),
+            NodeKind::SequenceOfStatements
+                | NodeKind::IfStatementElsif
+                | NodeKind::IfStatementElse
+                | NodeKind::CaseStatementAlternative
+        )
+    }) {
+        reads(&child, &mut out);
+    }
+    out
+}
+
+/// Walk a sequence in order, recording every read of a declared variable that no earlier
+/// statement on the same path has assigned.
+///
+/// Order matters inside a statement as much as between statements: one `if` may well assign a
+/// variable near its top and read it further down, and stopping at the outer statement would
+/// call that a latch. So the walk descends into `if`, `case` and loop bodies rather than taking
+/// a top-level statement as a single point in time.
+///
+/// Branches are not a sequence. Each branch of an `if` or `case` starts from the state the
+/// statement was reached in, so a variable assigned in one branch only is still unassigned for
+/// the others -- and, because what survives the statement is what [`always_assigned`] proves,
+/// still unassigned after it.
+fn read_before_assigned(
+    statements: &[SyntaxNode],
+    declared: &BTreeSet<String>,
+    entry: &BTreeSet<String>,
+    out: &mut BTreeMap<String, usize>,
+) {
+    let mut assigned = entry.clone();
     for statement in statements {
-        let mut named = Vec::new();
-        reads(statement, &mut named);
-        for (name, offset) in named {
-            if declared.contains(&name) && !assigned.contains(&name) {
-                out.entry(name).or_insert(offset);
+        let report = |named: Vec<(String, usize)>, out: &mut BTreeMap<String, usize>| {
+            for (name, offset) in named {
+                if declared.contains(&name) && !assigned.contains(&name) {
+                    out.entry(name).or_insert(offset);
+                }
             }
+        };
+        // The further branches of a statement that has them: `elsif` and `else` arms, `when`
+        // alternatives. `None` is a statement with no body to descend into.
+        let branches: Option<Vec<SyntaxNode>> = match statement.kind() {
+            NodeKind::IfStatement => Some(
+                statement
+                    .children()
+                    .filter(|c| {
+                        matches!(
+                            c.kind(),
+                            NodeKind::IfStatementElsif | NodeKind::IfStatementElse
+                        )
+                    })
+                    .collect(),
+            ),
+            NodeKind::CaseStatement => Some(
+                statement
+                    .children()
+                    .filter(|c| c.kind() == NodeKind::CaseStatementAlternative)
+                    .collect(),
+            ),
+            NodeKind::LoopStatement => Some(Vec::new()),
+            _ => None,
+        };
+        if let Some(branches) = branches {
+            report(header_reads(statement), out);
+            read_before_assigned(&sequence(statement), declared, &assigned, out);
+            for branch in branches {
+                report(header_reads(&branch), out);
+                read_before_assigned(&sequence(&branch), declared, &assigned, out);
+            }
+        } else {
+            // Nothing with a body of its own: everything it names, it names here.
+            let mut named = Vec::new();
+            reads(statement, &mut named);
+            report(named, out);
         }
         // By the object, not the element: a loop that fills `v(0)` and then reads `v(0)` on the
         // next iteration is ordinary code, and proving that needs more than syntax.
@@ -429,7 +515,6 @@ fn variable_latches(process: &SyntaxNode, statements: &[SyntaxNode]) -> Vec<(Str
             .map(|name| path(name).0),
         );
     }
-    out.into_iter().collect()
 }
 
 /// Signals a process assigns somewhere but not on every path: each has to remember its value.
@@ -1023,6 +1108,44 @@ mod tests {
         assert!(
             !found.iter().any(|(rule, _)| *rule == "lint_600"),
             "v has a default before it is read, got {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_variable_written_and_read_inside_one_statement_is_fine() {
+        // A whole process body wrapped in one `if`, which is how code guarded by a generic is
+        // written. The assignment still comes before the read; taking the `if` as a single
+        // point in time is what used to call this a latch.
+        let source = "entity dut is\n  generic (\n    implement_g : boolean := true\n  );\n  \
+                      port (\n    a : in  bit;\n    b : in  bit;\n    c : out bit\n  );\n\
+                      end entity dut;\n\narchitecture rtl of dut is\n\nbegin\n\n  \
+                      p : process (all) is\n    variable v : bit;\n  begin\n    \
+                      if implement_g then\n      v := b;\n      for i in 0 to 3 loop\n        \
+                      c <= v and a;\n      end loop;\n    end if;\n  end process p;\n\n\
+                      end architecture rtl;\n";
+        assert!(
+            !check_source(source)
+                .iter()
+                .any(|(rule, _)| *rule == "lint_600"),
+            "v is assigned before it is read"
+        );
+    }
+
+    #[test]
+    fn a_variable_assigned_in_one_branch_only_is_still_a_latch() {
+        // Branches are separate paths, not a sequence: on the `else` path `v` was never
+        // assigned, so the read after the `if` takes the value left from the previous run.
+        // (`w` is assigned and never read, and `c` is assigned on every path, so `v` is the
+        // only thing here to report.)
+        let found = check_source(&format!(
+            "{PREAMBLE}  p : process (a, b) is\n    variable v, w : bit;\n  begin\n    \
+             if a = '1' then\n      v := b;\n    else\n      w := b;\n    end if;\n    \
+             c <= v;\n  end process;\nend architecture;\n"
+        ));
+        assert_eq!(
+            found,
+            vec![("lint_600", 15)],
+            "v survives from the previous run on the else path"
         );
     }
 

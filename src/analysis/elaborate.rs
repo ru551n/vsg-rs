@@ -21,7 +21,11 @@ use super::design::{all_tokens, assignments, entity_of, find, lower, path, reads
 use super::lint::Finding;
 
 /// The ports of one entity, by what they do to a signal connected to them.
+///
+/// `#[non_exhaustive]`: this grows as the wiring checks learn to ask more of an interface, and a
+/// new field should not be a breaking change. Nothing outside this crate builds one.
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub struct Ports {
     /// Ports that drive their actual: `out`, `inout`, `buffer`.
     pub driving: BTreeSet<String>,

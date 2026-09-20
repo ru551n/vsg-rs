@@ -134,13 +134,16 @@ impl Backend {
         .unwrap_or_default();
         // Analyses run concurrently and do not finish in the order they started: a small edit can
         // overtake the larger buffer before it. Publishing that late result would leave the editor
-        // showing diagnostics for a version the user has already moved past.
+        // showing diagnostics for a version the user has already moved past -- or, if the document
+        // has since been closed, diagnostics for a file that is no longer open, which `did_close`
+        // has already withdrawn. Only the version that is still open is worth publishing.
         if self
             .documents
             .read()
             .await
             .get(&uri)
-            .is_some_and(|document| document.version > version)
+            .map(|document| document.version)
+            != Some(version)
         {
             return;
         }
@@ -233,7 +236,9 @@ fn diagnose(
             .related
             .iter()
             .filter_map(|other| {
-                let uri: Uri = format!("file://{}", other.file.display()).parse().ok()?;
+                // Not `format!("file://{path}")`: a space, a `#` or a Windows drive letter makes
+                // that not a URI, and the `?` below would drop the location rather than say so.
+                let uri = Uri::from_file_path(&other.file)?;
                 Some(DiagnosticRelatedInformation {
                     location: Location {
                         uri,

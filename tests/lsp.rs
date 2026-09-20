@@ -3,6 +3,7 @@
 //! These drive the real binary through stdin and stdout, because the point of a protocol server
 //! is what it puts on the wire, not what its functions return.
 
+use std::fmt::Write as _;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -105,6 +106,25 @@ impl Session {
         self.read_while(done)
     }
 
+    /// Everything that arrives in the next `millis`, however little that is.
+    ///
+    /// For asserting that something does *not* happen: waiting on a condition that never comes
+    /// true would burn the whole deadline on every run.
+    fn drain(&mut self, millis: u64) -> Vec<serde_json::Value> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(millis);
+        while std::time::Instant::now() < deadline {
+            match self
+                .reader
+                .recv_timeout(std::time::Duration::from_millis(20))
+            {
+                Ok(byte) => self.raw.push(byte),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        parse(&self.raw)
+    }
+
     /// Read until `wanted` messages have arrived in total, or time runs out.
     fn read_until(&mut self, wanted: usize) -> Vec<serde_json::Value> {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -181,12 +201,26 @@ fn parse(mut data: &[u8]) -> Vec<serde_json::Value> {
 }
 
 /// A file URI for a path, on any platform: `file:///home/x.vhd`, `file:///C:/dir/x.vhd`.
+///
+/// Percent-encoded, because that is what an editor sends: a raw space or `#` in a URI is not a
+/// URI, and a test that sends one is testing a client nobody writes.
 fn file_uri(path: &std::path::Path) -> String {
     let text = path.display().to_string().replace('\\', "/");
-    if text.starts_with('/') {
-        format!("file://{text}")
+    let mut encoded = String::new();
+    for c in text.chars() {
+        if matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '/' | '-' | '.' | '_' | '~' | ':') {
+            encoded.push(c);
+        } else {
+            let mut buffer = [0u8; 4];
+            for b in c.encode_utf8(&mut buffer).as_bytes() {
+                write!(encoded, "%{b:02X}").expect("a String never fails to write");
+            }
+        }
+    }
+    if encoded.starts_with('/') {
+        format!("file://{encoded}")
     } else {
-        format!("file:///{text}")
+        format!("file:///{encoded}")
     }
 }
 
@@ -601,5 +635,83 @@ fn formatting_is_what_the_command_line_would_have_written() {
         edits[0]["newText"].as_str().expect("new text"),
         expected,
         "the editor and the command line must not disagree"
+    );
+}
+
+#[test]
+fn a_closed_document_does_not_get_its_diagnostics_back() {
+    // Closing withdraws the diagnostics, but an analysis started before the close is still
+    // running. Publishing its result afterwards would put the problems back for a file the
+    // editor is no longer showing.
+    let mut session = Session::start();
+    let got = session.talk_while(
+        &[
+            did_open("file:///tmp/closing.vhd", TWO_DRIVERS),
+            serde_json::json!({
+                "jsonrpc": "2.0", "method": "textDocument/didClose",
+                "params": { "textDocument": { "uri": "file:///tmp/closing.vhd" } }
+            }),
+        ],
+        |seen| {
+            // The withdrawal `did_close` sends itself: an empty set with no version.
+            seen.iter().any(|m| {
+                m["method"] == "textDocument/publishDiagnostics"
+                    && m["params"]["diagnostics"]
+                        .as_array()
+                        .is_some_and(Vec::is_empty)
+            })
+        },
+    );
+    assert!(!got.is_empty(), "the server answered");
+
+    // Whatever else arrives, none of it may put diagnostics back.
+    // Long enough for the analysis that was in flight to finish: the first one builds the
+    // `ieee` and `std` libraries, so a few hundred milliseconds is not enough to prove anything.
+    let after = session.drain(4000);
+    let published: Vec<&serde_json::Value> = after
+        .iter()
+        .filter(|m| m["method"] == "textDocument/publishDiagnostics")
+        .collect();
+    let last = published.last().expect("something was published");
+    assert!(
+        last["params"]["diagnostics"]
+            .as_array()
+            .is_some_and(Vec::is_empty),
+        "the last word on a closed document is that it has no diagnostics: {published:#?}"
+    );
+}
+
+#[test]
+fn related_locations_survive_a_path_that_needs_encoding() {
+    // `format!("file://{path}")` is not a URI. A space or a `#` made the parse fail, and the
+    // related location was quietly dropped -- so a multiple-driver finding lost the other
+    // driver depending on what the directory was called.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let awkward = dir.path().join("my design #2");
+    std::fs::create_dir_all(&awkward).expect("mkdir");
+    let file = awkward.join("dut.vhd");
+    std::fs::write(&file, TWO_DRIVERS).expect("write");
+
+    let uri = file_uri(&file);
+    let got = Session::start().talk(&[did_open(&uri, TWO_DRIVERS)], 1);
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .unwrap_or_else(|| panic!("diagnostics were published; got {got:#?}"));
+    let drivers = published["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .find(|d| d["code"] == "lint_601")
+        .expect("the multiple driver is reported");
+    let related = drivers["relatedInformation"]
+        .as_array()
+        .expect("relatedInformation");
+    assert_eq!(related.len(), 2, "both drivers are named: {related:#?}");
+    let named = related[0]["location"]["uri"].as_str().expect("a uri");
+    assert!(named.starts_with("file://"), "{named}");
+    assert!(
+        !named.contains(' '),
+        "a URI never contains a raw space: {named}"
     );
 }

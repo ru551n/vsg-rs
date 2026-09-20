@@ -42,6 +42,46 @@ pub struct Ports {
 /// Every entity the run can see, by lower-case name.
 pub type Entities = BTreeMap<String, Ports>;
 
+/// The architectures declared for each entity, by lower-case name.
+pub type Architectures = BTreeMap<String, BTreeSet<String>>;
+
+/// What one pass over the files learned about how the design is put together.
+///
+/// Kept apart from [`Entities`] rather than folded into [`Ports`]: an entity's architectures
+/// arrive from other files than its ports do, and giving a name a port table it did not earn
+/// would change what the wiring rules believe about instances of it.
+#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Design {
+    pub entities: Entities,
+    pub architectures: Architectures,
+}
+
+impl Design {
+    /// Fold another pass's findings in: ports keep the entity-wins rule, and architectures are
+    /// unioned, because one entity's architectures may be spread over several files and so over
+    /// several workers.
+    #[must_use]
+    pub fn merge(mut self, other: Design) -> Design {
+        for (name, ports) in other.entities {
+            match self.entities.entry(name) {
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert(ports);
+                }
+                std::collections::btree_map::Entry::Occupied(mut slot) => {
+                    if ports.from_entity && !slot.get().from_entity {
+                        slot.insert(ports);
+                    }
+                }
+            }
+        }
+        for (name, found) in other.architectures {
+            self.architectures.entry(name).or_default().extend(found);
+        }
+        self
+    }
+}
+
 /// A name as it is compared here: trimmed, and lower case because VHDL is case-insensitive.
 fn trimmed(text: &str) -> String {
     text.trim().to_ascii_lowercase()
@@ -82,6 +122,13 @@ fn ports_of(node: &SyntaxNode, from_entity: bool) -> Ports {
 /// Read every input once and keep only what a port map needs: entity names and port modes. The
 /// syntax trees are dropped again, so this costs a parse rather than the memory of the design.
 pub fn entities(files: &[PathBuf]) -> Entities {
+    design(files).entities
+}
+
+/// Everything one pass over the files can tell the wiring rules: see [`Design`].
+#[must_use]
+pub fn design(files: &[PathBuf]) -> Design {
+    let mut architectures = Architectures::new();
     let mut out = Entities::new();
     for file in files {
         let Ok(source) = std::fs::read(file) else {
@@ -117,8 +164,28 @@ pub fn entities(files: &[PathBuf]) -> Entities {
                 }
             }
         }
+        // `architecture rtl of dut is` -- the name, then the entity it belongs to.
+        for body in find(parsed.root(), NodeKind::ArchitectureBody) {
+            let names: Vec<String> = all_tokens(&body)
+                .iter()
+                .map(lower)
+                .skip_while(|t| t != "architecture")
+                .take(4)
+                .collect();
+            if let [_, name, of, entity] = names.as_slice()
+                && of == "of"
+            {
+                architectures
+                    .entry(entity.clone())
+                    .or_default()
+                    .insert(name.clone());
+            }
+        }
     }
-    out
+    Design {
+        entities: out,
+        architectures,
+    }
 }
 
 /// One instantiation: what it instantiates, and what is connected to it.
@@ -368,6 +435,109 @@ pub fn interfaces(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec<Find
     findings
 }
 
+/// Configurations in this file that name an architecture the entity does not have.
+///
+/// A configuration is the one place a design names an architecture in writing, and the name is
+/// checked nowhere until elaboration -- a simulator rejects it, but only once someone runs one.
+/// Reporting it at lint time is the difference between a failed CI job and a failed build.
+///
+/// Only architectures of entities the run can see are checked; a configuration binding to a
+/// library outside the file set is left alone, because "not here" and "not anywhere" look the
+/// same from inside one run.
+#[must_use]
+pub fn configurations(parsed: &Parsed, file: &Path, design: &Design) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let known = |entity: &str, architecture: &String| -> bool {
+        design
+            .architectures
+            .get(entity)
+            .is_none_or(|found| found.contains(architecture))
+    };
+    let mut report = |node: &SyntaxNode, message: String| {
+        let (line, column) = all_tokens(node)
+            .first()
+            .map_or((1, 1), |token| parsed.line_col(token.text_offset()));
+        findings.push(Finding {
+            file: file.to_path_buf(),
+            rule: "lint_751",
+            line,
+            column,
+            message,
+            related: Vec::new(),
+        });
+    };
+
+    for declaration in find(parsed.root(), NodeKind::ConfigurationDeclaration) {
+        // `configuration <name> of <entity> is`, read as tokens: a name may itself contain
+        // "of", and the text form joins tokens without spaces.
+        let preamble: Vec<String> = find(&declaration, NodeKind::ConfigurationDeclarationPreamble)
+            .first()
+            .map(|node| all_tokens(node).iter().map(lower).collect())
+            .unwrap_or_default();
+        let [_, _, of, entity, ..] = preamble.as_slice() else {
+            continue;
+        };
+        if of != "of" {
+            continue;
+        }
+
+        // The outermost block configuration names an architecture of that entity. Nested ones
+        // name block and generate labels, which are a different thing entirely.
+        for block in declaration
+            .children()
+            .filter(|c| c.kind() == NodeKind::BlockConfiguration)
+        {
+            let preamble = find(&block, NodeKind::BlockConfigurationPreamble);
+            let Some(node) = preamble.first() else {
+                continue;
+            };
+            let names: Vec<String> = all_tokens(node).iter().map(lower).collect();
+            let [_, architecture] = names.as_slice() else {
+                continue;
+            };
+            if !known(entity, architecture) {
+                report(
+                    node,
+                    format!(
+                        "Configuration names architecture \'{architecture}\' of \'{entity}\', \
+                         which is not declared. Nothing rejects this until the design is \
+                         elaborated."
+                    ),
+                );
+            }
+        }
+
+        // `use entity work.<entity>(<architecture>);`
+        for binding in find(&declaration, NodeKind::Binding) {
+            let tokens: Vec<String> = all_tokens(&binding).iter().map(lower).collect();
+            if tokens.first().map(String::as_str) != Some("use")
+                || tokens.get(1).map(String::as_str) != Some("entity")
+            {
+                continue;
+            }
+            let Some(open) = tokens.iter().position(|t| t == "(") else {
+                continue;
+            };
+            let (Some(bound), Some(architecture)) = (tokens.get(open - 1), tokens.get(open + 1))
+            else {
+                continue;
+            };
+            if !known(bound, architecture) {
+                report(
+                    &binding,
+                    format!(
+                        "Configuration binds to architecture \'{architecture}\' of \
+                         \'{bound}\', which is not declared. Nothing rejects this until the \
+                         design is elaborated."
+                    ),
+                );
+            }
+        }
+    }
+    findings.sort_by_key(|f| (f.line, f.column));
+    findings
+}
+
 pub const RULES: &[(&str, &str)] = &[
     (
         "lint_730",
@@ -376,6 +546,10 @@ pub const RULES: &[(&str, &str)] = &[
     (
         "lint_750",
         "A component declaration does not match the entity it stands for.",
+    ),
+    (
+        "lint_751",
+        "A configuration names an architecture that is not declared.",
     ),
 ];
 
@@ -478,6 +652,67 @@ mod tests {
                 "  component vendor_pll is\n    port (\n      refclk : in bit\n    );\n  \
                   end component vendor_pll;\n",
             ),
+        );
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    /// `lint_751`'s messages for `source`, against a project holding `entity`.
+    fn configuration_check(entity: &str, source: &str) -> Vec<String> {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let other = dir.path().join("e.vhd");
+        let here = dir.path().join("cfg.vhd");
+        std::fs::write(&other, entity).expect("write");
+        std::fs::write(&here, source).expect("write");
+        // The design pass sees every file of the run, the configuration's own included.
+        let known = design(&[other, here]);
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        assert!(parsed.syntax_errors().is_empty(), "test source must parse");
+        configurations(&parsed, Path::new("cfg.vhd"), &known)
+            .into_iter()
+            .map(|f| f.message)
+            .collect()
+    }
+
+    const DFF: &str = "entity dff is\nend entity dff;\n\narchitecture rtl of dff is\nbegin\n\
+                       end architecture rtl;\n";
+
+    /// A configuration of `tb`, binding instance `i_dff` as `binding` says.
+    fn configuration(architecture: &str, binding: &str) -> String {
+        format!(
+            "entity tb is\nend entity tb;\n\narchitecture sim of tb is\nbegin\n\
+             end architecture sim;\n\nconfiguration cfg of tb is\n  for {architecture}\n    \
+             for i_dff : dff\n      {binding}\n    end for;\n  end for;\n\
+             end configuration cfg;\n"
+        )
+    }
+
+    #[test]
+    fn a_configuration_that_names_real_architectures() {
+        let found = configuration_check(DFF, &configuration("sim", "use entity work.dff(rtl);"));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_binding_to_an_architecture_that_is_not_declared() {
+        let found = configuration_check(DFF, &configuration("sim", "use entity work.dff(fast);"));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("'fast' of 'dff'"), "{found:?}");
+    }
+
+    #[test]
+    fn a_block_configuration_naming_an_architecture_that_is_not_declared() {
+        let found = configuration_check(DFF, &configuration("other", "use entity work.dff(rtl);"));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("'other' of 'tb'"), "{found:?}");
+    }
+
+    #[test]
+    fn an_entity_the_run_cannot_see_is_left_alone() {
+        // Binding to a library outside the file set: "not here" and "not anywhere" look the
+        // same from inside one run, so nothing is claimed.
+        let found = configuration_check(
+            "entity unrelated is\nend entity unrelated;\n",
+            &configuration("sim", "use entity vendor.pll(structural);"),
         );
         assert!(found.is_empty(), "{found:?}");
     }

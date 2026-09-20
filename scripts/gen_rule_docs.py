@@ -45,6 +45,7 @@ CATEGORIES: list[tuple[str, str, tuple[str, ...]]] = [
             "lint_730",
             "lint_740",
             "lint_750",
+            "lint_751",
         ),
     ),
     (

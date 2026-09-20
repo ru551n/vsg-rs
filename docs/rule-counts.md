@@ -7,6 +7,6 @@ Quoted by other pages through a snippet, so no page states a number of its own.
 | Set | Rules |
 |---|---|
 | VSG style rules | 972 |
-| Lint layer, total | 70 |
+| Lint layer, total | 71 |
 | — of those, resolved-semantic (need a library map) | 56 |
-| — of those, native to vsg-rs | 14 |
+| — of those, native to vsg-rs | 15 |

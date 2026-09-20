@@ -83,6 +83,7 @@ Reported by vsg-rs from the syntax tree plus the design's port connections. The 
 | [`lint_730`](native-rules.md#lint_730) | A signal is read but nothing drives it: no assignment, and no instance output. |
 | [`lint_740`](native-rules.md#lint_740) | A vector is assigned to one of a different width. |
 | [`lint_750`](native-rules.md#lint_750) | A component declaration does not match the entity it stands for. |
+| [`lint_751`](native-rules.md#lint_751) | A configuration names an architecture that is not declared. |
 
 ## Experimental (off by default)
 

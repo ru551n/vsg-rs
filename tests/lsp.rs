@@ -291,7 +291,12 @@ fn it_does_not_advertise_being_a_vhdl_language_server() {
 
 #[test]
 fn diagnostics_carry_related_locations() {
-    let got = Session::start().talk(&[did_open("file:///tmp/dut.vhd", TWO_DRIVERS)], 1);
+    // A real file: a related location names a file, and naming one that is not there is not a
+    // thing an editor ever asks about.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = dir.path().join("dut.vhd");
+    std::fs::write(&file, TWO_DRIVERS).expect("write");
+    let got = Session::start().talk(&[did_open(&file_uri(&file), TWO_DRIVERS)], 1);
     let published = got
         .iter()
         .find(|m| m["method"] == "textDocument/publishDiagnostics")
@@ -816,7 +821,10 @@ fn a_finding_after_a_tab_points_at_the_right_character() {
     let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
                   -- \u{1f980}\n  signal q : bit;\nbegin\n\tq <= '1';\n\tq <= '0';\n\
                   end architecture rtl;\n";
-    let got = Session::start().talk(&[did_open("file:///tmp/tabbed.vhd", source)], 1);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = dir.path().join("tabbed.vhd");
+    std::fs::write(&file, source).expect("write");
+    let got = Session::start().talk(&[did_open(&file_uri(&file), source)], 1);
     let published = got
         .iter()
         .find(|m| m["method"] == "textDocument/publishDiagnostics")

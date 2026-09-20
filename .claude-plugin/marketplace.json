@@ -1,0 +1,14 @@
+{
+  "name": "vsg-rs",
+  "description": "VHDL formatting and static analysis for Claude Code.",
+  "owner": {
+    "name": "Sebastian Hellgren"
+  },
+  "plugins": [
+    {
+      "name": "vsg-rs",
+      "source": "./",
+      "description": "Format VHDL, fix what is fixable, and check it is clean before committing."
+    }
+  ]
+}

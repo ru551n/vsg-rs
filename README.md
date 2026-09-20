@@ -153,6 +153,17 @@ claude mcp add vsg-rs -- vsg-rs mcp
 about to write before writing it, which is one step earlier still; `format` with `write` fixes a
 file in place without moving it through the conversation.
 
+For Claude Code there is a plugin, which installs a `vsg` skill and registers the MCP server:
+
+```text
+/plugin marketplace add ru551n/vsg-rs
+/plugin install vsg-rs@vsg-rs
+```
+
+The skill tells an agent to format and check VHDL before committing it, how to read a finding's
+class, and not to treat a run that skipped the library map as a clean file. `vsg-rs` itself still
+has to be on `PATH`.
+
 ### CI
 
 A [GitHub Action](https://vsg-rs.readthedocs.io/en/latest/github-action/) posts annotations and
@@ -177,8 +188,9 @@ repeated.
 * [Static analysis](https://vsg-rs.readthedocs.io/en/latest/lint/) and
   [project setup](https://vsg-rs.readthedocs.io/en/latest/project-setup/)
 * [Rule reference](https://vsg-rs.readthedocs.io/en/latest/rule-reference/)
-* [Language server](https://vsg-rs.readthedocs.io/en/latest/lsp/) and
-  [MCP server](https://vsg-rs.readthedocs.io/en/latest/mcp/)
+* [Language server](https://vsg-rs.readthedocs.io/en/latest/lsp/),
+  [MCP server](https://vsg-rs.readthedocs.io/en/latest/mcp/) and
+  [Claude Code plugin](https://vsg-rs.readthedocs.io/en/latest/claude-code/)
 * [Waivers](https://vsg-rs.readthedocs.io/en/latest/waivers/)
 * [Migrating from VSG](https://vsg-rs.readthedocs.io/en/latest/migrating-from-vsg/)
 * [Compatibility with VSG](https://vsg-rs.readthedocs.io/en/latest/compatibility/), measured

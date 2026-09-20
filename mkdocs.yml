@@ -43,6 +43,7 @@ nav:
       - Format on save: editors.md
       - Language server: lsp.md
       - MCP server: mcp.md
+      - Claude Code plugin: claude-code.md
   - Static analysis:
       - Overview: lint.md
       - Project setup: project-setup.md

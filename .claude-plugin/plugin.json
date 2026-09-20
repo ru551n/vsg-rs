@@ -1,0 +1,12 @@
+{
+  "name": "vsg-rs",
+  "version": "0.11.0",
+  "description": "VHDL formatting and static analysis: format a file the project's way, fix what is fixable, and check it is clean before committing, with the vsg-rs MCP server preconfigured.",
+  "author": {
+    "name": "Sebastian Hellgren"
+  },
+  "homepage": "https://vsg-rs.readthedocs.io/",
+  "repository": "https://github.com/ru551n/vsg-rs",
+  "license": "MIT OR Apache-2.0",
+  "keywords": ["vhdl", "fpga", "rtl", "formatter", "linter", "vsg", "style"]
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "vsg-rs": {
+      "command": "vsg-rs",
+      "args": ["mcp"]
+    }
+  }
+}

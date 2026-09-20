@@ -73,6 +73,35 @@
   through the formatter once. There are no phases and no rule-order dependencies, and users never
   need to repeat `--fix`.
 
+## The boundary with vhdl_ls
+
+vsg-rs and [vhdl_ls](https://github.com/VHDL-LS/rust_hdl) share a front end and divide the work.
+They are built from the same crates — `vhdl_syntax` parses for the formatter, `vhdl_lang`
+resolves names for the lint layer — and that is deliberate: writing a second VHDL parser and a
+second name resolver to avoid sharing one would be a larger project than this one, and the
+result would agree with no other tool about what the language means.
+
+Sharing the crates is not the same as sharing the job. The division is:
+
+| | |
+|---|---|
+| **vhdl_ls** | what a name means and where it is: completion, hover, go to definition, references, rename, symbols |
+| **vsg-rs** | how the source should look and what it does wrong: formatting, style rules, static analysis, fixes |
+
+`vsg-rs lsp` advertises only the second half, and [says so in its capabilities](lsp.md) — it
+answers no completion, hover, definition, reference, rename or symbol request, so an editor never
+asks it for one. The two are independent: neither requires the other, and installing both gives
+the union rather than a conflict.
+
+The rule this sets is about *behaviour*, not dependencies. A capability belonging to the left
+column does not move into vsg-rs because the crate that could implement it is linked already. If
+vsg-rs ever answers a navigation request, that is the boundary breaking, whatever the dependency
+graph says.
+
+The cost of sharing is real and accepted: `vhdl_syntax` decides which VHDL vsg-rs can parse (see
+[compatibility](compatibility.md)), and a change inside it can be a change here. That is the
+trade for not maintaining a second front end.
+
 ## Crate layout
 
 A single package (`vsg-rs`) with a library (`vsg_rs`) and a binary (`vsg-rs`, VSG's command

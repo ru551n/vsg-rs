@@ -4,6 +4,7 @@
 //! is what it puts on the wire, not what its functions return.
 
 use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
 fn frame(body: &serde_json::Value) -> Vec<u8> {
@@ -320,17 +321,47 @@ fn an_edit_replaces_the_diagnostics_of_the_version_before_it() {
     );
 }
 
-#[test]
-fn the_front_ends_rules_reach_the_editor_too() {
-    // A project with a library map, so the rules that resolve names across files can run.
+/// A project with a library map, so the rules that resolve names across files can run —
+/// reached through a symlink where the platform allows one.
+///
+/// An editor sends the path the user opened, while the project knows the path its library map
+/// resolved to. Those differ whenever any directory on the way is a symlink, which on macOS is
+/// every temporary directory, and a buffer updated under the wrong one is silently never
+/// analysed. Reaching the fixture through a link makes every platform test that.
+///
+/// The returned directory guard must outlive the path.
+fn project() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().expect("tempdir");
-    std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
+    let real = dir.path().join("project");
+    std::fs::create_dir_all(real.join("src")).expect("mkdir");
     std::fs::write(
-        dir.path().join("vhdl_ls.toml"),
+        real.join("vhdl_ls.toml"),
         "[libraries]\nmylib.files = [\"src/*.vhd\"]\n",
     )
     .expect("write config");
-    let file = dir.path().join("src/e.vhd");
+    let entry = reached_through_a_link(&real, &dir.path().join("link"));
+    (dir, entry)
+}
+
+/// `real`, reached through `link`, or `real` itself where a symlink cannot be created —
+/// on Windows that needs a privilege the machine may not grant, and macOS covers the case.
+#[cfg(unix)]
+fn reached_through_a_link(real: &Path, link: &Path) -> PathBuf {
+    match std::os::unix::fs::symlink(real, link) {
+        Ok(()) => link.to_path_buf(),
+        Err(_) => real.to_path_buf(),
+    }
+}
+
+#[cfg(not(unix))]
+fn reached_through_a_link(real: &Path, _link: &Path) -> PathBuf {
+    real.to_path_buf()
+}
+
+#[test]
+fn the_front_ends_rules_reach_the_editor_too() {
+    let (_dir, dir) = project();
+    let file = dir.join("src/e.vhd");
     let source = "entity e is\nend entity e;\n\narchitecture rtl of e is\n\n  \
                   signal spare : bit;\n\nbegin\n\nend architecture rtl;\n";
     // The file on disk does not carry the signal, so only the buffer can be the source of the
@@ -343,7 +374,7 @@ fn the_front_ends_rules_reach_the_editor_too() {
     .expect("write source");
 
     let uri = file_uri(&file);
-    let mut session = Session::start_in(dir.path());
+    let mut session = Session::start_in(&dir);
     let got = session.talk_while(&[did_open(&uri, source)], |seen| {
         seen.iter()
             .any(|m| m["method"] == "textDocument/publishDiagnostics")
@@ -368,14 +399,8 @@ fn the_kept_project_follows_the_buffer() {
     // The analysed project is kept between edits rather than rebuilt, which is what makes an
     // editor answer quickly. A cache that goes stale would be worse than a slow one: these
     // assert that a finding appears when an edit creates it and goes when an edit removes it.
-    let dir = tempfile::tempdir().expect("tempdir");
-    std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
-    std::fs::write(
-        dir.path().join("vhdl_ls.toml"),
-        "[libraries]\nmylib.files = [\"src/*.vhd\"]\n",
-    )
-    .expect("write config");
-    let file = dir.path().join("src/e.vhd");
+    let (_dir, dir) = project();
+    let file = dir.join("src/e.vhd");
     let clean = "entity e is\nend entity e;\n\narchitecture rtl of e is\n\nbegin\n\n\
                  end architecture rtl;\n";
     let with_spare = "entity e is\nend entity e;\n\narchitecture rtl of e is\n\n  \
@@ -383,7 +408,7 @@ fn the_kept_project_follows_the_buffer() {
     std::fs::write(&file, clean).expect("write source");
 
     let uri = file_uri(&file);
-    let mut session = Session::start_in(dir.path());
+    let mut session = Session::start_in(&dir);
     let got = session.talk_while(
         &[
             did_open(&uri, clean),

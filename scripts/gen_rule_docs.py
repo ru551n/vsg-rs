@@ -57,9 +57,10 @@ CATEGORIES: list[tuple[str, str, tuple[str, ...]]] = [
     ),
     (
         "Style policy",
-        "A house's choice rather than a defect: they report nothing about whether the design "
-        "works today, only about how it is written. Off unless configured.",
-        ("lint_602", "lint_603", "lint_713"),
+        "A house's choice rather than a defect: what they report is legal and works today, and "
+        "matters only because of what the project means to do with the code. Off unless "
+        "configured.",
+        ("lint_602", "lint_603", "lint_713", "lint_760"),
     ),
 ]
 

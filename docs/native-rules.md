@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The thirteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The fourteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -448,6 +448,57 @@ lint_750 | Error | 9 | Component 'dut' does not match entity 'dut': it does not 
 type marks across files. Entities are matched by bare name, so two entities of the same name in
 different libraries are treated as one; this is the same assumption `lint_730` makes. A component
 whose entity is not in the file set is not reported at all, rather than guessed at.
+
+---
+
+<a id="lint_760"></a>
+## lint_760 — Recursive subprogram
+
+**Detects** a subprogram whose body calls itself. Off by default.
+
+**Why it matters** recursion is legal VHDL and simulates perfectly. No synthesis tool accepts
+it: the hardware for a call is inlined at the call site, and a call that reaches itself has no
+bottom to inline from. A recursive function in a package that RTL also uses is a synthesis
+failure waiting for whoever instantiates it, and the vendor tool reports it much later and much
+less clearly.
+
+It is off by default because recursion is perfectly reasonable in code that is only ever
+simulated — OSVVM's alert hierarchy walks itself, and is right to. Enable it for code that has
+to synthesise:
+
+```yaml
+rule:
+  lint_760:
+    disable: false
+```
+
+**Evidence** the resolved call graph: every call in a subprogram's body, resolved to the
+subprogram it actually names. **Context** needs the library map, like every rule that resolves
+names; see [project setup](project-setup.md). **Severity** error. **Fix** none.
+
+```vhdl
+  function fact (n : integer) return integer is
+  begin
+    if n <= 1 then
+      return 1;
+    end if;
+    return n * fact(n - 1);
+  end function fact;
+```
+
+```text
+lint_760 | Error | 11 | Subprogram 'fact' calls itself
+```
+
+**This one cannot be written against the syntax.** A function whose body names itself is nearly
+always calling a *different* subprogram of the same name: scanning VUnit for that shape finds
+1871 candidates, almost none of them recursive, because VHDL overloads heavily — `to_slv`
+calling another `to_slv` is the normal case. Only the resolved symbol table tells the two apart.
+
+**Limitations** only *direct* recursion. VHDL requires a forward declaration for two subprograms
+to call each other, and a call to a name that has one resolves to the declaration rather than to
+the body, so a mutual cycle is not visible here. Under-reporting is the right way to be wrong
+about this.
 
 ---
 

@@ -5,3 +5,5 @@ rule:
     disable: false
   lint_713:
     disable: false
+  lint_760:
+    disable: false

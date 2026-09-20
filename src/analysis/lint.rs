@@ -540,6 +540,21 @@ impl Analyser {
         })
     }
 
+    /// The subprograms that can reach themselves, from the resolved call graph.
+    ///
+    /// Separate from [`Analyser::analyse`] because it walks the whole design rather than the
+    /// files that changed, which is the wrong shape for an editor asking after every keystroke.
+    /// Call it after `analyse`; before that nothing is resolved and the answer is empty.
+    #[must_use]
+    pub fn recursion(&self, sources: &[Source]) -> Vec<Finding> {
+        let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let wanted: BTreeMap<PathBuf, PathBuf> = sources
+            .iter()
+            .map(|s| (canonical(&s.path), s.path.clone()))
+            .collect();
+        super::calls::recursion(&self.project, &wanted)
+    }
+
     /// Analyse, with each source's buffer standing in for its file where it has one.
     pub fn analyse(&mut self, sources: &[Source]) -> Analysis {
         // An editor's buffer replaces the file it stands for. `update_source` re-parses in place
@@ -617,7 +632,15 @@ impl Analyser {
 /// # Errors
 /// If the project configuration cannot be read.
 pub fn analyse(sources: &[Source]) -> Result<Analysis, String> {
-    Ok(Analyser::new(sources)?.analyse(sources))
+    let mut analyser = Analyser::new(sources)?;
+    let mut analysis = analyser.analyse(sources);
+    // The call graph needs the same resolved project, and only a whole-run caller can afford
+    // the walk, so it is added here rather than inside `analyse`.
+    analysis.findings.extend(analyser.recursion(sources));
+    analysis.findings.sort_by(|a, b| {
+        (&a.file, a.line, a.column, a.rule).cmp(&(&b.file, b.line, b.column, b.rule))
+    });
+    Ok(analysis)
 }
 
 #[cfg(test)]

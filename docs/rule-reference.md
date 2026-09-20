@@ -95,10 +95,11 @@ These infer design intent that the source does not state outright, so they canno
 
 ## Style policy
 
-A house's choice rather than a defect: they report nothing about whether the design works today, only about how it is written. Off unless configured.
+A house's choice rather than a defect: what they report is legal and works today, and matters only because of what the project means to do with the code. Off unless configured.
 
 | Rule | Reports |
 |---|---|
 | [`lint_602`](native-rules.md#lint_602) | A signal assigned by a clocked process does not have a register suffix (off by default; set `suffixes`). |
 | [`lint_603`](native-rules.md#lint_603) | A signal assigned by a clocked process does not have a register prefix (off by default; set `prefixes`). |
 | [`lint_713`](native-rules.md#lint_713) | A 'when others' alternative on an enumeration, instead of naming every value (off by default). |
+| [`lint_760`](native-rules.md#lint_760) | A subprogram whose body calls itself, which no synthesis tool accepts (off by default). |

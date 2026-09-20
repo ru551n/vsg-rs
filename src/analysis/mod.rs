@@ -8,6 +8,7 @@
 //! Each rule states the evidence it works from, and reports nothing when that evidence is
 //! missing. See `docs/lint.md`.
 
+pub mod calls;
 pub mod choices;
 pub mod clockdomain;
 pub mod combinational;

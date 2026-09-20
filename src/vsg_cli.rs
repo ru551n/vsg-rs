@@ -1137,6 +1137,7 @@ fn lint_rules() -> impl Iterator<Item = (&'static str, &'static str)> {
         .chain(vsg_rs::analysis::clockdomain::RULES.iter().copied())
         .chain(vsg_rs::analysis::width::RULES.iter().copied())
         .chain(vsg_rs::analysis::choices::RULES.iter().copied())
+        .chain(vsg_rs::analysis::calls::RULES.iter().copied())
 }
 
 fn explain_rule(rule: &str) -> ExitCode {
@@ -2123,9 +2124,13 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                     // The same list `--list_rules` and `--explain` read, so the three cannot
                     // disagree about how many rules the lint layer has.
                     let all = lint_rules().count();
+                    // The front end's rules, plus the native rules that also read the resolved
+                    // project rather than the syntax tree. Counting only the first set would
+                    // understate what a missing library map costs.
                     let inactive = vsg_rs::analysis::lint::rules()
                         .filter(|(id, _)| !vsg_rs::analysis::lint::needs_no_library_map(id))
-                        .count();
+                        .count()
+                        + vsg_rs::analysis::calls::RULES.len();
                     let findings = if held_back > 0 {
                         format!(", and {held_back} finding(s) of theirs were held back")
                     } else {

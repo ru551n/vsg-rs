@@ -1,6 +1,6 @@
 {
   "name": "vsg-rs",
-  "displayName": "vsg-rs — VHDL formatter and static analysis",
+  "displayName": "vsg-rs \u2014 VHDL formatter and static analysis",
   "description": "Formatting, diagnostics and quick fixes for VHDL, from the vsg-rs language server. Complements a VHDL language server such as VHDL-LS.",
   "version": "0.11.0",
   "publisher": "ru551n",
@@ -10,19 +10,35 @@
     "url": "https://github.com/ru551n/vsg-rs.git",
     "directory": "editors/vscode"
   },
-  "categories": ["Formatters", "Linters", "Programming Languages"],
-  "keywords": ["vhdl", "formatter", "linter", "vsg"],
+  "categories": [
+    "Formatters",
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "vhdl",
+    "formatter",
+    "linter",
+    "vsg"
+  ],
   "engines": {
     "vscode": "^1.75.0"
   },
-  "activationEvents": ["onLanguage:vhdl"],
+  "activationEvents": [
+    "onLanguage:vhdl"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
         "id": "vhdl",
-        "aliases": ["VHDL"],
-        "extensions": [".vhd", ".vhdl"]
+        "aliases": [
+          "VHDL"
+        ],
+        "extensions": [
+          ".vhd",
+          ".vhdl"
+        ]
       }
     ],
     "configuration": {
@@ -30,12 +46,17 @@
       "properties": {
         "vsg-rs.server.mode": {
           "type": "string",
-          "enum": ["systemPath", "userPath"],
+          "enum": [
+            "embedded",
+            "systemPath",
+            "userPath"
+          ],
           "enumDescriptions": [
+            "Use the server bundled with this extension.",
             "Run `vsg-rs` from PATH.",
             "Run the executable named by vsg-rs.server.path."
           ],
-          "default": "systemPath",
+          "default": "embedded",
           "description": "Which vsg-rs executable to run."
         },
         "vsg-rs.server.path": {
@@ -45,7 +66,11 @@
         },
         "vsg-rs.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "Log the traffic between the editor and the server to the vsg-rs output channel."
         }
@@ -61,13 +86,18 @@
         "command": "vsg-rs.showOutput",
         "title": "Show Output",
         "category": "vsg-rs"
+      },
+      {
+        "command": "vsg-rs.showVersion",
+        "title": "Show Server Version",
+        "category": "vsg-rs"
       }
     ]
   },
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "vsce package"
+    "package": "node scripts/package.mjs"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -75,6 +105,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.75.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "@vscode/vsce": "^3.2.0"
   }
 }

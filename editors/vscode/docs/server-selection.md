@@ -5,8 +5,25 @@ decide.
 
 | `vsg-rs.server.mode` | Runs |
 |---|---|
-| `systemPath` (default) | `vsg-rs` from `PATH` |
+| `embedded` (default) | the server bundled with this extension |
+| `systemPath` | `vsg-rs` from `PATH` |
 | `userPath` | the executable named by `vsg-rs.server.path` |
+
+## The bundled server
+
+The extension is published per platform, and each build carries one server binary — the one
+produced by the same release that built the extension. Nothing is downloaded at install time, and
+there is no version to keep in step: **vsg-rs: Show Server Version** prints what the extension is
+and what the server it launched reports.
+
+| | |
+|---|---|
+| Linux | x86-64, arm64 |
+| Windows | x86-64, arm64 |
+| macOS | Intel, Apple silicon |
+
+On anything else the extension says so rather than failing to start something that was never
+there; install vsg-rs and set `server.mode` to `systemPath`.
 
 ## A local build
 

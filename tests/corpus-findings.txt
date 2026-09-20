@@ -1,2 +1,2 @@
-open-logic lint_600 23
+open-logic lint_600 6
 vunit lint_601 1

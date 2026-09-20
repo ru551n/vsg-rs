@@ -263,14 +263,30 @@ fn diagnose(
         });
     }
 
-    for finding in analysis::findings_for(&parsed, path, &cfg)
+    // The two halves count columns differently, and only one of them is what an editor wants.
+    // A rule working from the syntax tree reports a display column: tabs expanded to tab stops,
+    // one per character. LSP wants UTF-16 code units, so a finding after a tab would be pointed
+    // at several characters too far right, and one after a non-BMP character one too few. The
+    // front end already answers in UTF-16 (`vhdl_lang`'s `Position::character` is defined that
+    // way), so its findings are taken as they are.
+    let native: Vec<(analysis::lint::Finding, bool)> = analysis::findings_for(&parsed, path, &cfg)
         .into_iter()
-        .chain(front_end)
-    {
+        .map(|f| (f, true))
+        .chain(front_end.into_iter().map(|f| (f, false)))
+        .collect();
+    let place = |line: usize, column: usize, from_the_tree: bool| {
+        if from_the_tree {
+            position_of(text, parsed.offset_of(line, column))
+        } else {
+            position_at(line, column)
+        }
+    };
+
+    for (finding, from_the_tree) in native {
         if cfg.rule_by_id(finding.rule).is_some_and(|s| !s.enabled) {
             continue;
         }
-        let at = position_at(finding.line, finding.column);
+        let at = place(finding.line, finding.column, from_the_tree);
         // Structured, not flattened into the message: an editor can jump to each one.
         let related: Vec<DiagnosticRelatedInformation> = finding
             .related
@@ -279,13 +295,15 @@ fn diagnose(
                 // Not `format!("file://{path}")`: a space, a `#` or a Windows drive letter makes
                 // that not a URI, and the `?` below would drop the location rather than say so.
                 let uri = Uri::from_file_path(&other.file)?;
+                // Only this buffer's own columns can be converted: another file's text is not
+                // here to measure. Every native rule that carries related locations puts them
+                // in the same file, so that is the case worth getting right.
+                let here = from_the_tree && other.file == path;
+                let at = place(other.line, other.column, here);
                 Some(DiagnosticRelatedInformation {
                     location: Location {
                         uri,
-                        range: Range::new(
-                            position_at(other.line, other.column),
-                            position_at(other.line, other.column),
-                        ),
+                        range: Range::new(at, at),
                     },
                     message: other.message.clone(),
                 })

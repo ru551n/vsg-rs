@@ -806,3 +806,47 @@ fn an_unreadable_library_map_says_why_the_resolving_rules_are_quiet() {
         "a report quietly missing most of its rules looks like a clean one: {messages:#?}"
     );
 }
+
+#[test]
+fn a_finding_after_a_tab_points_at_the_right_character() {
+    // A rule working from the syntax tree reports a display column: the tab counts four. LSP
+    // counts UTF-16 code units, where it counts one, so the marker used to sit three characters
+    // to the right of the signal it is about. The comment adds a non-BMP character, which LSP
+    // counts as two and a display column as one -- the same disagreement the other way.
+    let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
+                  -- \u{1f980}\n  signal q : bit;\nbegin\n\tq <= '1';\n\tq <= '0';\n\
+                  end architecture rtl;\n";
+    let got = Session::start().talk(&[did_open("file:///tmp/tabbed.vhd", source)], 1);
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .unwrap_or_else(|| panic!("diagnostics were published; got {got:#?}"));
+    let drivers = published["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .find(|d| d["code"] == "lint_601")
+        .expect("the multiple driver is reported");
+
+    // Line 8 (zero-based 7) is "\tq <= '1';": the tab is character 0, `q` is character 1.
+    assert_eq!(drivers["range"]["start"]["line"], 7, "{drivers:#?}");
+    assert_eq!(
+        drivers["range"]["start"]["character"], 1,
+        "one tab is one UTF-16 code unit, not four columns: {drivers:#?}"
+    );
+    // The other driver is a related location, in this same buffer, and counts the same way.
+    let related = drivers["relatedInformation"]
+        .as_array()
+        .expect("relatedInformation");
+    let lines: Vec<i64> = related
+        .iter()
+        .filter_map(|r| r["location"]["range"]["start"]["line"].as_i64())
+        .collect();
+    assert!(lines.contains(&7) && lines.contains(&8), "{related:#?}");
+    for r in related {
+        assert_eq!(
+            r["location"]["range"]["start"]["character"], 1,
+            "related locations count the same way: {r:#?}"
+        );
+    }
+}

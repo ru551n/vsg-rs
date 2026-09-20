@@ -207,9 +207,9 @@ impl Parsed {
     }
 
     /// 1-based line and column (in characters) of a byte offset.
-    pub fn line_col(&self, offset: usize) -> (usize, usize) {
-        let offset = offset.min(self.source.len());
-        let starts = self.line_starts.get_or_init(|| {
+    /// The byte offset each line starts at, built once.
+    fn line_starts(&self) -> &[usize] {
+        self.line_starts.get_or_init(|| {
             std::iter::once(0)
                 .chain(
                     self.source
@@ -219,13 +219,66 @@ impl Parsed {
                         .map(|(i, _)| i + 1),
                 )
                 .collect()
-        });
+        })
+    }
+
+    pub fn line_col(&self, offset: usize) -> (usize, usize) {
+        let offset = offset.min(self.source.len());
+        let starts = self.line_starts();
         let line = starts.partition_point(|&s| s <= offset);
         let line_start = starts[line - 1];
         (
             line,
             display_width(&self.source[line_start..offset], self.utf8, 0) + 1,
         )
+    }
+
+    /// The byte offset of a one-based line and column, the inverse of [`Parsed::line_col`].
+    ///
+    /// The column is a display column: tabs have been expanded to tab stops and a character
+    /// counts one, which is what a console report wants and what every rule that works from the
+    /// syntax tree produces. Anything that needs the position in other units -- an LSP client
+    /// counts UTF-16 code units -- converts from the offset rather than from the column.
+    ///
+    /// A column that falls inside a tab, or past the end of the line, gives the nearest
+    /// character boundary at or before it.
+    #[must_use]
+    pub fn offset_of(&self, line: usize, column: usize) -> usize {
+        let starts = self.line_starts();
+        let from = starts
+            .get(line.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.source.len());
+        let to = starts.get(line).copied().unwrap_or(self.source.len());
+        let target = column.saturating_sub(1);
+
+        let mut col = 0;
+        let mut at = from;
+        while at < to && col < target {
+            match self.source[at] {
+                b'\n' => break,
+                b'\t' => {
+                    col = (col / crate::doc::TAB_WIDTH + 1) * crate::doc::TAB_WIDTH;
+                    at += 1;
+                }
+                first => {
+                    // One column per character, so a multi-byte one advances the offset by more
+                    // than it advances the column.
+                    at += if self.utf8 {
+                        match first {
+                            0x00..=0x7F => 1,
+                            0xC0..=0xDF => 2,
+                            0xE0..=0xEF => 3,
+                            _ => 4,
+                        }
+                    } else {
+                        1
+                    };
+                    col += 1;
+                }
+            }
+        }
+        at.min(self.source.len())
     }
 
     pub(crate) fn tokens(&self) -> &[SyntaxToken] {
@@ -629,5 +682,41 @@ mod tests {
     fn range_rejects_syntax_errors() {
         let parsed = Parsed::new(b"entity e is port (a : in bit; end;\n".to_vec());
         assert!(format_range(&parsed, &FormatConfig::default(), 0..1).is_err());
+    }
+}
+
+#[cfg(test)]
+mod position_tests {
+    use super::Parsed;
+
+    fn parsed(source: &str) -> Parsed {
+        Parsed::new(source.as_bytes().to_vec())
+    }
+
+    #[test]
+    fn offset_of_inverts_line_col() {
+        // A tab, a multi-byte character and a non-BMP one, which are the three ways a display
+        // column and a byte offset come apart.
+        let source = "entity e is\n\tsignal \u{e5}: bit;\n  -- \u{1f980} here\nend entity e;\n";
+        let parsed = parsed(source);
+        for offset in 0..source.len() {
+            if !source.is_char_boundary(offset) {
+                continue;
+            }
+            let (line, column) = parsed.line_col(offset);
+            assert_eq!(
+                parsed.offset_of(line, column),
+                offset,
+                "round trip at {offset} ({line}:{column})"
+            );
+        }
+    }
+
+    #[test]
+    fn a_tab_counts_as_a_tab_stop_not_a_character() {
+        let parsed = parsed("\tq <= d;\n");
+        // `q` is one byte after the tab, but four display columns in.
+        assert_eq!(parsed.line_col(1), (1, 5));
+        assert_eq!(parsed.offset_of(1, 5), 1);
     }
 }

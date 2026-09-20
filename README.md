@@ -57,7 +57,7 @@ Differences are listed in
 **A real formatter.** Source is parsed once into a lossless syntax tree and printed in one
 canonical layout, like rustfmt or Black. Every layout rule is fixed rather than reported, long
 lines are folded at structural boundaries, and running `--fix` twice changes nothing. All
-violations are reported at once and fixed in a single pass — no repeated runs, no rule-order
+violations are reported at once and fixed in a single pass: no repeated runs, no rule-order
 dependencies.
 
 **Safety.** Formatted output is re-parsed and must contain exactly the same tokens and comments;
@@ -88,7 +88,7 @@ state machines, vector widths, clock-domain crossings, and the type and name dia
 real front end. Every rule states the evidence behind it and reports nothing when that evidence
 is missing.
 
-Most of these resolve names across files, which needs a library map — without one they are
+Most of these resolve names across files, which needs a library map. Without one they are
 skipped, and the run says so. See
 [static analysis](https://vsg-rs.readthedocs.io/en/latest/lint/) and
 [project setup](https://vsg-rs.readthedocs.io/en/latest/project-setup/).
@@ -123,6 +123,35 @@ Configuration keys vsg-rs adds live under a `vsg_rs:` block: `reflow_comments`,
 `testbench_files`, `testbench_libraries`, `synchronizers`, and a `rule:` block per kind of
 file.
 
+### Editors and coding agents
+
+Two servers over stdio, both the same engine as the command line, so everything is told the same
+thing about the same file under the same configuration.
+
+```sh
+vsg-rs lsp                        # a language server: diagnostics, formatting, quick fixes
+vsg-rs mcp                        # an MCP server, for a coding agent
+```
+
+The [language server](https://vsg-rs.readthedocs.io/en/latest/lsp/) is meant to run beside
+`vhdl_ls` rather than instead of it, and advertises only what vsg-rs is: it answers no
+completion, hover or definition request. A [VS Code extension](editors/vscode/README.md) ships
+it.
+
+The [MCP server](https://vsg-rs.readthedocs.io/en/latest/mcp/) gives a coding agent three tools,
+`lint`, `format` and `explain_rule`:
+
+```sh
+claude mcp add vsg-rs -- vsg-rs mcp
+```
+
+```json
+{ "mcpServers": { "vsg-rs": { "command": "vsg-rs", "args": ["mcp"] } } }
+```
+
+Both take a buffer rather than a path, so an agent can check what it is about to write before
+writing it. Catching a mistake there is one step earlier still.
+
 ### CI
 
 A [GitHub Action](https://vsg-rs.readthedocs.io/en/latest/github-action/) posts annotations and
@@ -139,7 +168,7 @@ anywhere.
 
 ## Documentation
 
-**[vsg-rs.readthedocs.io](https://vsg-rs.readthedocs.io/)** — what vsg-rs adds on top of VSG. The
+**[vsg-rs.readthedocs.io](https://vsg-rs.readthedocs.io/)**: what vsg-rs adds on top of VSG. The
 rules, their options and the configuration file are VSG's own and are linked to rather than
 repeated.
 
@@ -147,6 +176,8 @@ repeated.
 * [Static analysis](https://vsg-rs.readthedocs.io/en/latest/lint/) and
   [project setup](https://vsg-rs.readthedocs.io/en/latest/project-setup/)
 * [Rule reference](https://vsg-rs.readthedocs.io/en/latest/rule-reference/)
+* [Language server](https://vsg-rs.readthedocs.io/en/latest/lsp/) and
+  [MCP server](https://vsg-rs.readthedocs.io/en/latest/mcp/)
 * [Waivers](https://vsg-rs.readthedocs.io/en/latest/waivers/)
 * [Migrating from VSG](https://vsg-rs.readthedocs.io/en/latest/migrating-from-vsg/)
 * [Compatibility with VSG](https://vsg-rs.readthedocs.io/en/latest/compatibility/), measured

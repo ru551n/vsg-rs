@@ -283,13 +283,7 @@ fn diagnose(
         .get_mut(&key)
         .map(|held| held.analyser.analyse(&sources));
     let front_end = match resolved {
-        Some(analysis) if analysis.mapped => analysis.findings,
-        // Without a library map most rules cannot run; the few that can are still worth having.
-        Some(analysis) => analysis
-            .findings
-            .into_iter()
-            .filter(|f| analysis::lint::needs_no_library_map(f.rule))
-            .collect(),
+        Some(analysis) => analysis.reportable(),
         // The project could not be built at all; the rules that need it simply do not report.
         None => Vec::new(),
     };

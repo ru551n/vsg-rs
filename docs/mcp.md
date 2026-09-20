@@ -17,10 +17,24 @@ the [language server](lsp.md).
 | `format` | `source`, optional `path` | the source as `--fix` would write it, and whether it changed |
 | `explain_rule` | `rule` | the rule's description, its class, and whether a default run uses it |
 
-`path` is what the source is called. It decides which configuration applies, found by walking up
-from that name exactly as the command line does, so an agent working in a configured project gets
-that project's rules rather than the defaults. Source that does not parse comes back from
-`format` unchanged, with the reason, and from `lint` as its syntax errors alone.
+`path` is what the source is called. It decides two things, both found by walking up from that
+name exactly as the command line does: the configuration that applies, and the project's
+`vhdl_ls.toml`. An agent working in a configured project therefore gets that project's rules and
+its whole lint layer, rather than the defaults and half of it.
+
+Source that does not parse comes back from `format` unchanged, with the reason, and from `lint`
+as its syntax errors alone.
+
+## The buffer stands in for a file
+
+The rules that resolve names across files analyse the buffer in place of the file it names, which
+is how an unsaved edit is checked at all. That requires the file to exist: a path on no disk
+belongs to no library, so those rules do not run for it. A buffer for a file that does exist is
+fully analysed, edits and all.
+
+When the library map cannot be read, `lint` says so in a `warning` field beside the findings
+rather than returning a shorter list in silence. Most of the lint layer needs that map, and a
+report quietly missing it looks exactly like a clean one.
 
 ## Configuring an agent
 

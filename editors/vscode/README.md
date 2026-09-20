@@ -9,10 +9,27 @@ parsing, no formatter and no rules of its own. What you see in the editor is wha
 
 ## What it gives you
 
-* **Diagnostics** in the Problems panel, including related locations — a multiply driven signal
+* **Diagnostics** in the Problems panel, including related locations. A multiply driven signal
   points at each driver, a combinational loop at each signal on it.
 * **Quick fixes** for findings that carry one, and **Fix All** for the document.
 * **Format Document**, and format on save.
+
+## For a coding agent, not an editor
+
+The same binary serves the same answers over the Model Context Protocol, which is what an agent
+writing VHDL in this workspace should be told:
+
+```sh
+claude mcp add vsg-rs -- vsg-rs mcp
+```
+
+```json
+{ "mcpServers": { "vsg-rs": { "command": "vsg-rs", "args": ["mcp"] } } }
+```
+
+It offers `lint`, `format` and `explain_rule`, all on a buffer rather than a path, so a mistake
+can be caught before the file is written. See
+[the MCP server](https://vsg-rs.readthedocs.io/en/latest/mcp/).
 
 ## It is not a VHDL language server
 
@@ -24,7 +41,7 @@ alongside; the two are independent and neither requires the other.
 ## Getting the server
 
 Nothing to install: the extension ships the server for your platform and uses it. To run a
-different one — a system install, or a local build — see
+different one, a system install or a local build, see
 [choosing a server](docs/server-selection.md).
 
 ## Make it the VHDL formatter
@@ -47,7 +64,7 @@ alongside VHDL-LS, and for troubleshooting.
 ## Configuring the rules
 
 Not here. Rules, layout and severities come from the project's own `vsg-rs.yaml` (or `vsg.yaml`
-passed on the command line), found from the file's directory upwards — the same file the command
+passed on the command line), found from the file's directory upwards: the same file the command
 line and CI read. That is deliberate: a formatting decision must not depend on which editor
 someone opened the file in.
 

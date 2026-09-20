@@ -29,6 +29,16 @@
 //!
 //! Only a literal zero is read. A named constant that happens to be zero would need its value
 //! propagated, and propagating values is how a rule stops being able to say what it knows.
+//!
+//! ## Assigning outside a subtype's range
+//!
+//! `variable v : integer range 0 to 15` followed by `v := 20` assigns a value the subtype does
+//! not contain, and the assignment raises an error when it happens. Both simulators say so at
+//! analysis -- GHDL "expression constraints don't match target ones", NVC "value 20 outside of
+//! SMALL range 0 to 15 for variable V" -- and the front end reports neither.
+//!
+//! The same restraint applies: the range and the value are both read as written, and anything
+//! else is left alone.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -163,8 +173,162 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
         });
     }
     divisions(parsed, file, &mut findings);
+    ranges_assigned(parsed, file, &mut findings);
     findings.sort_by_key(|f| (f.line, f.column));
     findings
+}
+
+/// Report every assignment of a literal outside its target's declared range.
+///
+/// Uses the same table as the index check: an object is only judged when its range is written
+/// as integer literals.
+fn ranges_assigned(parsed: &Parsed, file: &Path, findings: &mut Vec<Finding>) {
+    let scalars = declared_scalar_ranges(parsed.root());
+    if scalars.is_empty() {
+        return;
+    }
+    for kind in [
+        NodeKind::SimpleVariableAssignment,
+        NodeKind::SimpleWaveformAssignment,
+        NodeKind::ConcurrentSimpleSignalAssignment,
+    ] {
+        for statement in find(parsed.root(), kind) {
+            let text = text_of(&statement);
+            // `v:=20;` or `s<=20;` -- the target, then the value, both written out.
+            let Some((target, value)) = text
+                .split_once(":=")
+                .or_else(|| text.split_once("<="))
+                .map(|(t, v)| {
+                    (
+                        t.trim().to_ascii_lowercase(),
+                        v.trim().trim_end_matches(';'),
+                    )
+                })
+            else {
+                continue;
+            };
+            let Some(&(low, high)) = scalars.get(&target) else {
+                continue;
+            };
+            let Ok(assigned) = value.trim().parse::<i64>() else {
+                continue;
+            };
+            if assigned >= low && assigned <= high {
+                continue;
+            }
+            let Some(token) = all_tokens(&statement).first().cloned() else {
+                continue;
+            };
+            let (line, column) = parsed.line_col(token.text_offset());
+            findings.push(Finding {
+                file: file.to_path_buf(),
+                rule: "lint_782",
+                line,
+                column,
+                message: format!(
+                    "{assigned} is outside the range {low} to {high} of \'{target}\'. Making \
+                     this assignment raises an error: the value has to belong to the subtype."
+                ),
+                related: Vec::new(),
+            });
+        }
+    }
+}
+
+/// Every subtype declared with a literal range: `subtype small is integer range 0 to 15;`.
+///
+/// Naming the subtype is the ordinary way to write one, so reading only the inline form would
+/// leave the rule with almost nothing to say.
+fn declared_subtypes(root: &SyntaxNode) -> BTreeMap<String, (i64, i64)> {
+    let mut found = BTreeMap::new();
+    for declaration in find(root, NodeKind::SubtypeDeclaration) {
+        let text = text_of(&declaration).to_ascii_lowercase();
+        // `subtype<name>is<mark>range<low>to<high>;`
+        let Some((head, tail)) = text.split_once("range") else {
+            continue;
+        };
+        let Some(name) = head
+            .trim_start_matches("subtype")
+            .split("is")
+            .next()
+            .map(|n| n.trim().to_owned())
+            .filter(|n| !n.is_empty())
+        else {
+            continue;
+        };
+        if let Some(bounds) = literal_bounds(tail.trim_end_matches(';')) {
+            found.insert(name, bounds);
+        }
+    }
+    found
+}
+
+/// Every object declared with a scalar range written as integer literals: `integer range 0 to 15`.
+fn declared_scalar_ranges(root: &SyntaxNode) -> BTreeMap<String, (i64, i64)> {
+    let subtypes = declared_subtypes(root);
+    let mut found: BTreeMap<String, Option<(i64, i64)>> = BTreeMap::new();
+    for kind in [
+        NodeKind::SignalDeclaration,
+        NodeKind::VariableDeclaration,
+        NodeKind::ConstantDeclaration,
+    ] {
+        for declaration in find(root, kind) {
+            let text = text_of(&declaration);
+            let Some((names, rest)) = text.split_once(':') else {
+                continue;
+            };
+            // `range 0 to 15`, not `(7 downto 0)`: an index constraint is the other rule's.
+            // Either written out, or through a subtype that writes it out.
+            let rest = rest.to_ascii_lowercase();
+            let mark = rest
+                .split(":=")
+                .next()
+                .unwrap_or(&rest)
+                .trim()
+                .trim_end_matches(';')
+                .trim();
+            let Some(bounds) = rest
+                .split_once("range")
+                .and_then(|(_, tail)| {
+                    literal_bounds(
+                        tail.split(":=")
+                            .next()
+                            .unwrap_or(tail)
+                            .trim_end_matches(';'),
+                    )
+                })
+                .or_else(|| subtypes.get(mark).copied())
+            else {
+                continue;
+            };
+            for name in names
+                .split(',')
+                .map(|n| {
+                    n.trim()
+                        .trim_start_matches("signal")
+                        .trim_start_matches("variable")
+                        .trim_start_matches("constant")
+                        .trim()
+                        .to_ascii_lowercase()
+                })
+                .filter(|n| !n.is_empty())
+            {
+                match found.get(&name) {
+                    Some(Some(known)) if *known != bounds => {
+                        found.insert(name, None);
+                    }
+                    Some(_) => {}
+                    None => {
+                        found.insert(name, Some(bounds));
+                    }
+                }
+            }
+        }
+    }
+    found
+        .into_iter()
+        .filter_map(|(name, bounds)| Some((name, bounds?)))
+        .collect()
 }
 
 /// Report every division whose divisor is written as zero.
@@ -208,6 +372,11 @@ pub const RULES: &[super::Rule] = &[
     super::Rule {
         id: "lint_780",
         description: "An index that is outside the declared range of the array it selects from.",
+        certainty: super::Certainty::Definite,
+    },
+    super::Rule {
+        id: "lint_782",
+        description: "An assignment of a value outside the declared range of its target.",
         certainty: super::Certainty::Definite,
     },
     super::Rule {
@@ -373,5 +542,77 @@ mod divisor_tests {
     fn a_zero_that_is_not_a_divisor_is_silent() {
         let found = check_source(&process("    n := n + 0;\n    n := n - 0;\n"));
         assert!(found.is_empty(), "{found:?}");
+    }
+}
+
+#[cfg(test)]
+mod range_tests {
+    use super::*;
+
+    fn check_source(source: &str) -> Vec<String> {
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        assert!(parsed.syntax_errors().is_empty(), "test source must parse");
+        check(&parsed, Path::new("dut.vhd"))
+            .into_iter()
+            .filter(|f| f.rule == "lint_782")
+            .map(|f| f.message)
+            .collect()
+    }
+
+    /// A process declaring `declarations` whose body is `body`.
+    fn process(declarations: &str, body: &str) -> String {
+        format!(
+            "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\nbegin\n  \
+             p : process is\n{declarations}  begin\n{body}    wait;\n  end process p;\n\
+             end architecture rtl;\n"
+        )
+    }
+
+    const SMALL: &str = "    variable v : integer range 0 to 15;\n";
+
+    #[test]
+    fn a_value_above_the_range() {
+        let found = check_source(&process(SMALL, "    v := 20;\n"));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("20 is outside the range 0 to 15"),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn a_value_below_the_range() {
+        let found = check_source(&process(SMALL, "    v := -1;\n"));
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
+    #[test]
+    fn a_value_inside_the_range_is_silent() {
+        let found = check_source(&process(SMALL, "    v := 0;\n    v := 15;\n"));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_value_that_is_not_a_literal_is_not_evaluated() {
+        let found = check_source(&process(
+            "    variable v : integer range 0 to 15;\n    variable n : integer := 99;\n",
+            "    v := n;\n",
+        ));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_target_without_a_declared_range_is_not_judged() {
+        let found = check_source(&process("    variable v : integer;\n", "    v := 20;\n"));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_signal_assignment_counts_too() {
+        let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
+                      signal s : integer range 0 to 7;\nbegin\n  s <= 9;\n\
+                      end architecture rtl;\n";
+        let found = check_source(source);
+        assert_eq!(found.len(), 1, "{found:?}");
     }
 }

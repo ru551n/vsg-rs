@@ -68,6 +68,7 @@ What a default run reports. Each one follows from the source and the resolved pr
 | [`lint_770`](native-rules.md#lint_770) | A process with no sensitivity list and no wait statement, which can never suspend. |
 | [`lint_780`](native-rules.md#lint_780) | An index that is outside the declared range of the array it selects from. |
 | [`lint_781`](native-rules.md#lint_781) | A division, `mod` or `rem` whose divisor is written as zero. |
+| [`lint_782`](native-rules.md#lint_782) | An assignment of a value outside the declared range of its target. |
 
 ## Advisory analysis
 

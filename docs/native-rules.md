@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The eighteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The nineteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -482,11 +482,16 @@ lint_751 | Error | 17 | Configuration binds to architecture 'no_such_arch' of 'd
                         is not declared
 ```
 
-**Limitations** checks architecture names only. It does not check that the instance label exists
-in the architecture, or that the label instantiates the component named beside it — those need
-the instance labels of every architecture, which the elaboration pass does not collect. An
-entity the run cannot see is left alone entirely: from inside one run, "not here" and "not
-anywhere" look the same.
+It also checks the instances a configuration names: `for i_dff : dff` against what the
+architecture really instantiates, so a label that no longer exists, or one whose instance is of
+a different component, is reported.
+
+**Limitations** only the configurations written directly in the architecture's own block. One
+nested inside another configures a block or a generate, whose labels are its own. The unit is
+compared only where the instantiation names it outright. An entity the run cannot see is left
+alone entirely: from inside one run, "not here" and "not anywhere" look the same — and the rule
+says nothing at all unless the run covers the whole project, because absence is evidence only
+then.
 
 ---
 
@@ -640,6 +645,39 @@ lint_781 | Error | 9 | Division by zero
 **Limitations** a literal zero only. A named constant that happens to be zero needs its value
 propagated to the division, and propagating values is how a rule stops being able to say what it
 knows. `/=` is one token and is not a division.
+
+---
+
+<a id="lint_782"></a>
+## lint_782 — Value outside the target's range
+
+**Detects** an assignment of a literal that the target's declared range does not contain.
+
+**Why it matters** the value has to belong to the subtype, so making the assignment raises an
+error. Both simulators say so at analysis — GHDL *"expression constraints don't match target
+ones"*, NVC *"value 20 outside of SMALL range 0 to 15 for variable V"* — and the VHDL front end
+vsg-rs uses reports neither.
+
+**Evidence** the declared range and the assigned value, both written as integer literals. The
+range may be written on the object or on a subtype it names.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+  subtype small is integer range 0 to 15;
+  ...
+    variable v : small;
+  ...
+    v := 20;
+```
+
+```text
+lint_782 | Error | 16 | 20 is outside the range 0 to 15 of 'v'
+```
+
+**Limitations** literals only, on both sides. A value that is a name or an expression is not
+evaluated, and a range that depends on a generic is not either. A subtype of a subtype is not
+followed.
 
 ---
 

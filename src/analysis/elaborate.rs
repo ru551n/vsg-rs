@@ -42,6 +42,12 @@ pub struct Ports {
 /// Every entity the run can see, by lower-case name.
 pub type Entities = BTreeMap<String, Ports>;
 
+/// What each architecture instantiates: `entity.architecture` to label to the unit named.
+///
+/// A label is `None` when the architecture holds more than one of that name saying different
+/// things, which a configuration cannot be judged against.
+pub type Instances = BTreeMap<String, BTreeMap<String, Option<String>>>;
+
 /// The architectures declared for each entity, by lower-case name.
 pub type Architectures = BTreeMap<String, BTreeSet<String>>;
 
@@ -55,6 +61,10 @@ pub type Architectures = BTreeMap<String, BTreeSet<String>>;
 pub struct Design {
     pub entities: Entities,
     pub architectures: Architectures,
+    /// The instances inside each architecture, so a configuration can be read against the thing
+    /// it configures.
+    #[serde(default)]
+    pub instances: Instances,
     /// Whether this index covers the whole project, or only the files the run was handed.
     ///
     /// A rule that reports something *missing* needs this. Not finding an architecture in a set
@@ -88,6 +98,22 @@ impl Design {
         }
         for (name, found) in other.architectures {
             self.architectures.entry(name).or_default().extend(found);
+        }
+        for (unit, found) in other.instances {
+            let known = self.instances.entry(unit).or_default();
+            for (label, names) in found {
+                match known.get(&label) {
+                    // Seen already, saying something else: which one a configuration means is
+                    // not a question this index can answer.
+                    Some(Some(before)) if Some(before) != names.as_ref() => {
+                        known.insert(label, None);
+                    }
+                    Some(_) => {}
+                    None => {
+                        known.insert(label, names);
+                    }
+                }
+            }
         }
         self
     }
@@ -140,6 +166,7 @@ pub fn entities(files: &[PathBuf]) -> Entities {
 #[must_use]
 pub fn design(files: &[PathBuf]) -> Design {
     let mut architectures = Architectures::new();
+    let mut instances = Instances::new();
     let mut out = Entities::new();
     for file in files {
         let Ok(source) = std::fs::read(file) else {
@@ -190,12 +217,35 @@ pub fn design(files: &[PathBuf]) -> Design {
                     .entry(entity.clone())
                     .or_default()
                     .insert(name.clone());
+                // `entity.architecture`, which is how a configuration names the pair.
+                let unit = instances.entry(format!("{entity}.{name}")).or_default();
+                for statement in find(&body, NodeKind::ComponentInstantiationStatement) {
+                    let tokens = all_tokens(&statement);
+                    let (Some(label), Some(colon)) = (tokens.first(), tokens.get(1)) else {
+                        continue;
+                    };
+                    if lower(colon) != ":" {
+                        continue;
+                    }
+                    let label = lower(label);
+                    let instantiated = entity_of(&statement);
+                    match unit.get(&label) {
+                        Some(Some(before)) if Some(before) != instantiated.as_ref() => {
+                            unit.insert(label, None);
+                        }
+                        Some(_) => {}
+                        None => {
+                            unit.insert(label, instantiated);
+                        }
+                    }
+                }
             }
         }
     }
     Design {
         entities: out,
         architectures,
+        instances,
         // One pass over a list of files knows nothing about what else the project holds. The
         // caller that knows says so.
         complete: false,
@@ -524,6 +574,50 @@ pub fn configurations(parsed: &Parsed, file: &Path, design: &Design) -> Vec<Find
                          elaborated."
                     ),
                 );
+                continue;
+            }
+
+            // `for <label> : <component>`, against what the architecture really instantiates.
+            // Only the configurations written directly in this block: one nested inside another
+            // configures a block or a generate, whose labels are its own.
+            let Some(inside) = design.instances.get(&format!("{entity}.{architecture}")) else {
+                continue;
+            };
+            for component in block
+                .children()
+                .filter(|c| c.kind() == NodeKind::ComponentConfiguration)
+            {
+                let preamble = find(&component, NodeKind::ComponentConfigurationPreamble);
+                let Some(node) = preamble.first() else {
+                    continue;
+                };
+                let parts: Vec<String> = all_tokens(node).iter().map(lower).collect();
+                let [_, label, colon, unit] = parts.as_slice() else {
+                    continue;
+                };
+                if colon != ":" {
+                    continue;
+                }
+                match inside.get(label) {
+                    None => report(
+                        node,
+                        format!(
+                            "Configuration names instance \'{label}\', which architecture \
+                             \'{architecture}\' of \'{entity}\' does not have."
+                        ),
+                    ),
+                    // Known, and instantiating something else. A configuration binds a label to
+                    // the unit beside it, so naming a different one cannot be carried out.
+                    Some(Some(actual)) if actual != unit => report(
+                        node,
+                        format!(
+                            "Configuration says instance \'{label}\' is a \'{unit}\', but \
+                             architecture \'{architecture}\' of \'{entity}\' instantiates \
+                             \'{actual}\' there."
+                        ),
+                    ),
+                    Some(_) => {}
+                }
             }
         }
 
@@ -704,7 +798,11 @@ mod tests {
     /// A configuration of `tb`, binding instance `i_dff` as `binding` says.
     fn configuration(architecture: &str, binding: &str) -> String {
         format!(
-            "entity tb is\nend entity tb;\n\narchitecture sim of tb is\nbegin\n\
+            // The architecture really instantiates what the configuration configures: these
+            // tests are about the architecture *names*, not about the instance label.
+            "entity tb is\nend entity tb;\n\narchitecture sim of tb is\n  \
+             component dff is\n    port (d : in bit);\n  end component dff;\n  \
+             signal a : bit;\nbegin\n  i_dff : dff port map (d => a);\n\
              end architecture sim;\n\nconfiguration cfg of tb is\n  for {architecture}\n    \
              for i_dff : dff\n      {binding}\n    end for;\n  end for;\n\
              end configuration cfg;\n"
@@ -729,6 +827,51 @@ mod tests {
         let found = configuration_check(DFF, &configuration("other", "use entity work.dff(rtl);"));
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].contains("'other' of 'tb'"), "{found:?}");
+    }
+
+    /// The same, for a configuration whose architecture really instantiates `i_dff : dff`.
+    fn instance_check(binding: &str) -> Vec<String> {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let other = dir.path().join("e.vhd");
+        let here = dir.path().join("cfg.vhd");
+        std::fs::write(&other, DFF).expect("write");
+        let source = format!(
+            "entity tb is\nend entity tb;\n\narchitecture sim of tb is\n  \
+             component dff is\n    port (d : in bit);\n  end component dff;\n  \
+             signal a : bit;\nbegin\n  i_dff : dff port map (d => a);\n\
+             end architecture sim;\n\nconfiguration cfg of tb is\n  for sim\n    \
+             for {binding}\n      use entity work.dff(rtl);\n    end for;\n  end for;\n\
+             end configuration cfg;\n"
+        );
+        std::fs::write(&here, &source).expect("write");
+        let mut known = design(&[other, here]);
+        known.complete = true;
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        assert!(parsed.syntax_errors().is_empty(), "test source must parse");
+        configurations(&parsed, Path::new("cfg.vhd"), &known)
+            .into_iter()
+            .map(|f| f.message)
+            .collect()
+    }
+
+    #[test]
+    fn a_configuration_of_an_instance_that_is_really_there() {
+        assert!(instance_check("i_dff : dff").is_empty());
+    }
+
+    #[test]
+    fn a_configuration_of_an_instance_label_that_does_not_exist() {
+        let found = instance_check("i_missing : dff");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("'i_missing'"), "{found:?}");
+        assert!(found[0].contains("does not have"), "{found:?}");
+    }
+
+    #[test]
+    fn a_configuration_naming_the_wrong_component_for_the_label() {
+        let found = instance_check("i_dff : other");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("instantiates 'dff' there"), "{found:?}");
     }
 
     #[test]

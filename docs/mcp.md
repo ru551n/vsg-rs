@@ -13,9 +13,28 @@ the [language server](lsp.md).
 
 | Tool | Arguments | Answers |
 |---|---|---|
-| `lint` | `source`, optional `path` | every finding, with rule id, line, column, message and class |
-| `format` | `source`, optional `path` | the source as `--fix` would write it, and whether it changed |
+| `lint` | `path` or `source` | every finding, with rule id, line, column, message and class |
+| `format` | `path` or `source`, and `write` | the formatted source, or what it changed when it wrote |
 | `explain_rule` | `rule` | the rule's description, its class, and whether a default run uses it |
+
+## A file, or source that is not one yet
+
+`lint` and `format` take either. A `path` alone is read from disk. A `source` is used in place of
+the file, with `path` naming it, which is how an agent checks what it is about to write before
+writing it.
+
+`format` returns the formatted text, unless `write` is true, in which case it writes the file and
+returns only what changed. That is the point of it: formatting a file already on disk should not
+cost the file twice over, once sent and once returned.
+
+```json
+{ "path": "rtl/fifo.vhd", "write": true }
+```
+
+Nothing is written unless `write` says so, and then only what parsed and actually changed. Source
+with syntax errors comes back untouched, with the reason, and never reaches the file: that is
+where a formatter can do the most damage. A file already formatted keeps its timestamp, so a
+build watching it does not rerun because a formatter looked at it.
 
 `path` is what the source is called. It decides two things, both found by walking up from that
 name exactly as the command line does: the configuration that applies, and the project's

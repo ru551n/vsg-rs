@@ -545,6 +545,7 @@ impl Analyser {
         // An editor's buffer replaces the file it stands for. `update_source` re-parses in place
         // and registers a path the project has not seen, which is how an unsaved file is
         // analysed at all.
+        let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         for source in sources.iter().filter(|s| s.text.is_some()) {
             let Some(text) = source.text.as_deref() else {
                 continue;
@@ -552,11 +553,20 @@ impl Analyser {
             // VHDL may be Latin-1; anything that is not valid UTF-8 is replaced rather than
             // refused, so a buffer is always analysable even while it is being typed.
             let text = String::from_utf8_lossy(text);
+            // The project knows a file by the path its library map resolved to, which is the
+            // symlink-resolved one — every macOS temporary directory is reached through a
+            // symlink, and an editor sends the path the user opened. Updating under the other
+            // spelling registers a source belonging to no library, so the buffer is never
+            // analysed and the file on disk silently answers in its place.
+            let path = if self.project.get_source(&source.path).is_some() {
+                source.path.clone()
+            } else {
+                canonical(&source.path)
+            };
             self.project
-                .update_source(&vhdl_lang::Source::inline(&source.path, &text));
+                .update_source(&vhdl_lang::Source::inline(&path, &text));
         }
 
-        let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         // The inputs, by canonical path, so findings can be mapped back to the name the run was
         // given and findings in other files (the standard libraries) can be dropped.
         let wanted: BTreeMap<PathBuf, PathBuf> = sources

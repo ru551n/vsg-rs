@@ -333,7 +333,14 @@ fn the_front_ends_rules_reach_the_editor_too() {
     let file = dir.path().join("src/e.vhd");
     let source = "entity e is\nend entity e;\n\narchitecture rtl of e is\n\n  \
                   signal spare : bit;\n\nbegin\n\nend architecture rtl;\n";
-    std::fs::write(&file, source).expect("write source");
+    // The file on disk does not carry the signal, so only the buffer can be the source of the
+    // finding below. Writing the same text to both would let a project that never saw the
+    // buffer pass this test on the strength of the file.
+    std::fs::write(
+        &file,
+        "entity e is\nend entity e;\n\narchitecture rtl of e is\n\nbegin\n\nend architecture rtl;\n",
+    )
+    .expect("write source");
 
     let uri = file_uri(&file);
     let mut session = Session::start_in(dir.path());

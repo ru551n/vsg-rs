@@ -9,20 +9,31 @@ For what exists today, see [static analysis](lint.md) and the
 
 ## Static-analysis facts
 
-The analyser currently derives names, types, control flow within a process, and the port
-connections between design units. The work with the most leverage is extending that set of facts,
-because each new fact makes several rules possible at once:
+The analyser derives names, types, control flow within a process, and the port connections
+between design units. The front end contributes a fully resolved symbol table on top of that,
+which is where most of the facts a linter wants already live.
 
-* **A project reference graph** — every place a declaration is read or written, across files.
-  Several rules approximate this per file today and are narrower than they need to be.
-* **A subprogram call graph**, which makes recursion reportable. Subprograms nothing calls are
-  already reported, by the front end's `lint_004`.
+One is missing:
+
+* **A subprogram call graph**, which would make recursion reportable. Recursion is legal VHDL
+  and unsynthesisable, so it is worth saying. It cannot be done from syntax: a function whose
+  body names itself is nearly always overload resolution rather than recursion — 1871 such
+  candidates in VUnit, almost none of them recursive — so it needs the resolved call graph and
+  nothing less.
+
+A project-wide reference graph was the other candidate and turned out not to be needed: the
+front end's `lint_004` already reports a declaration nothing uses, including signals and
+constants local to an architecture. It needs the library map, like every resolved-semantic rule;
+see [project setup](project-setup.md).
 
 ## Interface consistency
 
-Ports and generics are checked against the entity today. The same treatment for component
-declarations against their entities, and for configurations, is a natural extension of the
-elaboration data already collected.
+Ports and generics are checked against the entity, and `lint_750` checks component declarations
+against theirs. Configurations are not checked: a configuration naming an instance label the
+architecture does not have, or an architecture the entity does not have, is not reported.
+Nothing is written here about when that will change — configurations appear in 11 files of the
+1,864 across the validation corpora, and the work needs facts the elaboration pass does not
+collect yet (architecture names per entity, instance labels per architecture).
 
 ## Frontend completeness
 

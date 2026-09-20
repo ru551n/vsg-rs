@@ -267,9 +267,18 @@ Narrowing to architecture-local objects gives zero on all three corpora, but onl
 query cannot see them at all; a positive-control file confirmed that rather than the code
 being clean.
 
-**Consequence.** Both remaining PR 8+ items need a custom `ast::search::Searcher` over
-`vhdl_lang`'s AST rather than the `Project` query API, because `DesignRoot` is not public
-(§10.6). That is the real size of the work, and it is more than "small-to-medium".
+**Consequence.** A custom `ast::search::Searcher` is needed rather than the `Project` query API,
+because `DesignRoot` is not public (§10.6). It can be driven: `Project::search(&mut impl
+Searcher)` (`project.rs:298`) is public, `Searcher::search_decl` sees every declaration including
+the architecture-local ones `public_symbols` misses, and `Reference::get() -> Option<EntityId>`
+resolves each reference position to what it names.
+
+**But the reference graph turned out not to be worth building.** Its headline rule already
+exists: the front end's `lint_004` reports an unused declaration, architecture-local signals and
+constants included -- verified against a fixture declaring one of each. Of the consumers this
+plan listed for the graph, unused declarations and unreachable subprograms are `lint_004`,
+shadowing is `lint_101`, and case analysis shipped as `lint_712`/`lint_713`. Only recursion is
+left, and that is the call graph, not the reference graph.
 
 Recursion in particular cannot be done syntactically: scanning for a function whose body names
 itself finds 1871 candidates in VUnit and 3397 in cnn_accel, nearly all of them overload

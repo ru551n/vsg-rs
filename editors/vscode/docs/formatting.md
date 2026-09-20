@@ -116,9 +116,12 @@ For the full division of labour, see
 command palette. For the LSP traffic as well, set `"vsg-rs.trace.server": "messages"` (or
 `"verbose"`). **vsg-rs: Restart Server** restarts it without reloading the window.
 
-**The server will not start.** The extension says so and names the executable it tried. Usually
-`vsg-rs` is not installed (`pip install vsg-rs`), or `vsg-rs.server.path` points at something
-that is not there. See [choosing a server](server-selection.md).
+**The server will not start.** The extension says so and names the executable it tried.
+**vsg-rs: Show Server Version** prints which one that was, what the extension is, and what the
+server reports itself to be. The extension ships a server for the common platforms and uses it by
+default, so this usually means either the platform has no bundled build — install vsg-rs and set
+`vsg-rs.server.mode` to `systemPath` — or `vsg-rs.server.path` points at something that is not
+there. See [choosing a server](server-selection.md).
 
 **No diagnostics at all.** Check that VS Code recognises the file as VHDL — the extension
 activates on the `vhdl` language, for `.vhd` and `.vhdl`. If the file has a syntax error, the

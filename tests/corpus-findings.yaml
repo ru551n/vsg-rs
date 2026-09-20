@@ -3,3 +3,5 @@
 rule:
   lint_700:
     disable: false
+  lint_713:
+    disable: false

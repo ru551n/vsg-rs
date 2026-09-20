@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The ten rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The twelve rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -324,6 +324,89 @@ lint_740 | Error | 12 | 'wide' is 16 bits wide and is assigned to 'narrow', whic
 **Limitations** measures only what is certain: the statement must be `a <= b;` and nothing else,
 both sides whole objects, both ranges literal. A slice, a concatenation, a conversion or a range
 mentioning a generic is left alone, so most parameterised RTL is out of its reach by design.
+
+---
+
+<a id="lint_712"></a>
+## lint_712 — Unreachable `when others`
+
+**Detects** a `when others` alternative on a case whose other alternatives already name every
+value of the selector's type.
+
+**Why it matters** the branch cannot be taken today, so it reads as dead code. What it does is
+change what happens tomorrow: add a value to the enumeration and the case is exhaustive again for
+the wrong reason — the new value falls into `others`, silently doing whatever that branch does,
+commonly `null`. Without the `others`, the same edit is a compile error naming the choice that is
+missing, which is the answer the author wanted.
+
+**Evidence** the enumeration's declared values, and the choices of every alternative.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+  type state_t is (idle, run, done);
+  signal state : state_t;
+  ...
+  case state is
+    when idle   => null;
+    when run    => null;
+    when done   => null;
+    when others => null;
+  end case;
+```
+
+```text
+lint_712 | Error | 14 | 'when others' can never be taken: the other alternatives already
+                        name all 3 values of 'state'
+```
+
+**Limitations** reports only where the branch is provably dead. The selector must be a plain name
+of an object declared with an enumeration this file declares, every value of that enumeration must
+be a plain identifier, and every choice must be one of those values. A selector that is an
+expression, a choice that is a range or a constant, a character-literal value, or a name declared
+twice with different types all disqualify the case rather than being guessed at.
+
+---
+
+<a id="lint_713"></a>
+## lint_713 — `when others` instead of naming every value
+
+**Detects** a `when others` alternative that stands in for values of an enumeration the case does
+not name. Off by default.
+
+**Why it matters** the same future edit as `lint_712`, arrived at from the other side: while
+`others` is there, adding a value to the enumeration compiles, and the new value quietly takes the
+`others` branch. A project that wants every value spelled out enables this and gets a compile
+error instead. This is a house's choice rather than a defect, which is why it is off unless asked
+for.
+
+**Evidence** the enumeration's declared values, and the choices of every alternative.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```yaml
+rule:
+  lint_713:
+    disable: false
+```
+
+```vhdl
+  type state_t is (idle, run, done);
+  signal state : state_t;
+  ...
+  case state is
+    when idle   => null;
+    when run    => null;
+    when others => null;
+```
+
+```text
+lint_713 | Error | 13 | 'when others' covers 1 of the values of 'state' (done)
+```
+
+**Limitations** the same evidence as `lint_712`, so the same cases are out of reach. The two rules
+divide the `others` alternatives between them and never report the same one twice: `lint_712` takes
+those no value can reach, `lint_713` those that do stand in for values.
 
 ---
 

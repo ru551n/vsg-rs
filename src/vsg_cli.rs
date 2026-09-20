@@ -1136,6 +1136,7 @@ fn lint_rules() -> impl Iterator<Item = (&'static str, &'static str)> {
         .chain(vsg_rs::analysis::combinational::RULES.iter().copied())
         .chain(vsg_rs::analysis::clockdomain::RULES.iter().copied())
         .chain(vsg_rs::analysis::width::RULES.iter().copied())
+        .chain(vsg_rs::analysis::choices::RULES.iter().copied())
 }
 
 fn explain_rule(rule: &str) -> ExitCode {
@@ -1519,17 +1520,9 @@ fn lint_files(
             let reason = vsg_rs::analysis::testbench::classify(&parsed, file, kind_sources);
             let (cfg, naming) = if reason.is_some() { &testbench } else { &rtl };
             let wiring = vsg_rs::analysis::elaborate::undriven(&parsed, file, entities);
-            let machines = vsg_rs::analysis::fsm::check(&parsed, file);
-            let loops = vsg_rs::analysis::combinational::check(&parsed, file);
-            let crossings = vsg_rs::analysis::clockdomain::check(&parsed, file, &cfg.synchronizers);
-            let sizes = vsg_rs::analysis::width::check(&parsed, file);
-            let found = vsg_rs::analysis::design::check(&parsed, file, naming)
+            let found = vsg_rs::analysis::per_file(&parsed, file, naming, &cfg.synchronizers)
                 .into_iter()
                 .chain(wiring)
-                .chain(machines)
-                .chain(loops)
-                .chain(crossings)
-                .chain(sizes)
                 .filter_map(|f| {
                     let settings = cfg.rule_by_id(f.rule);
                     if settings.as_ref().is_some_and(|s| !s.enabled) {

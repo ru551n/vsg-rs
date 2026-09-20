@@ -956,7 +956,7 @@ impl Config {
             // Most lint rules are on once the layer runs. Two kinds start off: house style,
             // which is a project's choice, and the experimental rules, which infer design intent
             // rather than deriving it and so cannot point at the evidence the others can.
-            let on_by_default = !matches!(id, "lint_602" | "lint_603" | "lint_700");
+            let on_by_default = !matches!(id, "lint_602" | "lint_603" | "lint_700" | "lint_713");
             return Some(self.layered(
                 id,
                 &["lint"],

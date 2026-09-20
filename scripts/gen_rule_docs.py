@@ -36,7 +36,7 @@ CATEGORIES: list[tuple[str, str, tuple[str, ...]]] = [
         "Dataflow and structure",
         "Reported by vsg-rs from the syntax tree plus the design's port connections. The "
         "evidence is structural, so these run without a library map.",
-        ("lint_601", "lint_710", "lint_711", "lint_720", "lint_730", "lint_740"),
+        ("lint_601", "lint_710", "lint_711", "lint_712", "lint_720", "lint_730", "lint_740"),
     ),
     (
         "Experimental (off by default)",
@@ -48,9 +48,9 @@ CATEGORIES: list[tuple[str, str, tuple[str, ...]]] = [
     ),
     (
         "Style policy",
-        "Naming conventions rather than analysis: they report nothing about whether the design "
-        "works. Off unless configured.",
-        ("lint_602", "lint_603"),
+        "A house's choice rather than a defect: they report nothing about whether the design "
+        "works today, only about how it is written. Off unless configured.",
+        ("lint_602", "lint_603", "lint_713"),
     ),
 ]
 

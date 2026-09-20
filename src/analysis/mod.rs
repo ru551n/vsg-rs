@@ -8,6 +8,7 @@
 //! Each rule states the evidence it works from, and reports nothing when that evidence is
 //! missing. See `docs/lint.md`.
 
+pub mod choices;
 pub mod clockdomain;
 pub mod combinational;
 pub mod design;
@@ -59,16 +60,34 @@ pub fn findings_for(parsed: &Parsed, path: &Path, cfg: &Config) -> Vec<lint::Fin
         prefixes: Vec::new(),
         suffixes: Vec::new(),
     });
-    let synchronizers = &cfg.synchronizers;
-    design::check(parsed, path, &naming)
+    per_file(parsed, path, &naming, &cfg.synchronizers)
+        .into_iter()
+        .filter(|f| {
+            cfg.rule_by_id(f.rule)
+                .is_none_or(|settings| settings.enabled)
+        })
+        .collect()
+}
+
+/// Every single-file rule, with nothing filtered out.
+///
+/// This is the one list of those rules. The command line adds the project-wide rules to it and
+/// applies its own per-file configuration; [`findings_for`] applies one configuration and stops
+/// there. Both go through here, so a rule added to this function reaches both -- while the two
+/// kept their own lists, a rule added to one was simply missing from the other.
+#[must_use]
+pub fn per_file(
+    parsed: &Parsed,
+    path: &Path,
+    naming: &design::Naming,
+    synchronizers: &[String],
+) -> Vec<lint::Finding> {
+    design::check(parsed, path, naming)
         .into_iter()
         .chain(fsm::check(parsed, path))
         .chain(combinational::check(parsed, path))
         .chain(clockdomain::check(parsed, path, synchronizers))
         .chain(width::check(parsed, path))
-        .filter(|f| {
-            cfg.rule_by_id(f.rule)
-                .is_none_or(|settings| settings.enabled)
-        })
+        .chain(choices::check(parsed, path))
         .collect()
 }

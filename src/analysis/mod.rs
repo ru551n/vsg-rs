@@ -17,6 +17,7 @@ pub mod elaborate;
 pub mod evaluated;
 pub mod fsm;
 pub mod lint;
+pub mod resetdomain;
 pub mod suspend;
 pub mod testbench;
 pub mod width;
@@ -96,6 +97,7 @@ pub fn rules() -> impl Iterator<Item = Rule> {
         .chain(fsm::RULES.iter().copied())
         .chain(combinational::RULES.iter().copied())
         .chain(clockdomain::RULES.iter().copied())
+        .chain(resetdomain::RULES.iter().copied())
         .chain(width::RULES.iter().copied())
         .chain(choices::RULES.iter().copied())
         .chain(calls::RULES.iter().copied())
@@ -176,6 +178,7 @@ pub fn per_file(
         .chain(fsm::check(parsed, path))
         .chain(combinational::check(parsed, path))
         .chain(clockdomain::check(parsed, path, synchronizers))
+        .chain(resetdomain::check(parsed, path))
         .chain(width::check(parsed, path))
         .chain(choices::check(parsed, path))
         .chain(suspend::check(parsed, path))

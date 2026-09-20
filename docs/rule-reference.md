@@ -98,6 +98,7 @@ Inferred rather than derived: the rule decides what the design is trying to be b
 |---|---|
 | [`lint_600`](native-rules.md#lint_600) | A combinational process does not assign a signal on every path, inferring a latch. |
 | [`lint_700`](native-rules.md#lint_700) | A signal registered on one clock is used in logic on another, without a synchroniser. |
+| [`lint_701`](native-rules.md#lint_701) | A register reset by one signal is used in logic reset by another. |
 
 ## Policy
 

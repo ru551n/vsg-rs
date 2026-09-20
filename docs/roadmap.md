@@ -9,39 +9,10 @@ For what exists today, see [static analysis](lint.md) and the
 
 ## Design reports
 
-vsg-rs reports what is wrong. It does not yet report what a design *is*, and the two are
-different products. A rule says "this cannot work". A report says "here is what you have
-built", and leaves the judgement to the reader.
-
-That distinction is why the report is worth building. A default run reports definite errors
-only, so the analysis behind clock domain crossings, latches, state machines and combinational
-cycles is switched off unless someone asks for it: the conclusions depend on intent, even
-though the facts do not. A report is where those facts belong. They are already computed and
-have nowhere to go.
-
-Most of the work is keeping what is already worked out rather than working out anything new.
-`clockdomain`, `fsm` and `combinational` each expose one function returning a list of findings,
-and discard everything they learned on the way: which clock a register belongs to, a machine's
-states and the transitions between them, the signals on a cycle. `elaborate` is the exception
-and already publishes its facts as data, which is why hierarchy is nearly free.
-
-| Report | Facts today | What it needs |
-|---|---|---|
-| Hierarchy | published as `elaborate::Design` | presenting |
-| State machines | computed, discarded | returning them |
-| Latches | computed, discarded | returning them |
-| Combinational cycles | computed, discarded | returning them |
-| Clock domain crossings | computed, discarded | returning them, with each register's clock |
-| Reset domain crossings | nothing | inferring resets, which nothing does today |
-
-Reset domain crossings are the odd one out, and the only item here that is new analysis rather
-than a new way of presenting old analysis. Nothing in vsg-rs infers which signal is a reset;
-[static analysis](lint.md) lists that among the things it does not try to work out.
-
-The shape is undecided. The first step that settles it is hierarchy and state machines behind a
-`--report`, hierarchy because it needs no analysis change and proves the output, state machines
-because they prove the pattern the other three then follow. Machine readable first: a table for
-a person can be produced from structured output, and not the other way round.
+Not planned for now. vsg-rs is a developer tool: it tells you what is wrong where you are
+working, and a design browser is a different product. The facts behind clock domain crossings,
+state machines, latches and combinational cycles are computed and could be presented, but
+presenting them is not what this tool is for.
 
 ## Interface consistency
 

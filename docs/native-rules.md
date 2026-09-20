@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The nineteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The twenty rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -178,6 +178,61 @@ vsg_rs:
 **Limitations** deliberately under-reports. A single-stage capture is accepted although two
 stages are the usual requirement, because proving the second stage needs more context than one
 architecture gives. A signal registered on two clocks is skipped entirely.
+
+---
+
+<a id="lint_701"></a>
+## lint_701 — Reset domain crossing
+
+**Detects** a register reset by one signal used in logic reset by another. Off by default.
+
+**Why it matters** the two resets can be released at different moments. The source stops being
+held while the destination is still in reset, or the other way round, and the destination
+captures a value from a register that is mid-release. An asynchronous release close to the clock
+edge is a recovery or removal violation, which is metastability by another name.
+
+It is the same shape as a clock domain crossing and the same shape of mistake, with the domains
+drawn by resets rather than clocks. `lint_700` finds one, `lint_701` the other.
+
+**Evidence** the reset each clocked process clears its registers with, and the signals each
+process reads. **Heuristic**: the rule decides which signal is a reset, which the source does not
+state. **Context** one architecture with at least two resets. **Severity** error. **Fix** none.
+**Off by default**, like `lint_700`:
+
+```yaml
+rule:
+  lint_701:
+    disable: false
+```
+
+```vhdl
+  p_b : process (clk, rst_b) is
+  begin
+    if rst_b = '1' then
+      out_b <= '0';
+    elsif rising_edge(clk) then
+      out_b <= in_a and d;      -- in_a is reset by rst_a
+    end if;
+  end process p_b;
+```
+
+```text
+lint_701 | Error | 28 | Signal 'in_a' is reset by 'rst_a' and used in logic reset by 'rst_b'
+```
+
+Accepted, because it is how the crossing is made safe:
+
+```vhdl
+      in_b  <= in_a;            -- captured into this domain first
+      out_b <= in_b and d;
+```
+
+**Limitations** only an asynchronous reset counts, written as the branch the clock edge is the
+`elsif` of. That is not only caution: the hazard is a reset asserting or releasing away from the
+clock edge, and a synchronous reset is ordinary clocked logic that crosses nothing. Reading the
+first test inside `if rising_edge(clk) then` also cannot tell a reset from a clock enable, which
+is exactly the mistake an earlier version made. A register cleared by two different resets is
+left alone rather than guessed at.
 
 ---
 

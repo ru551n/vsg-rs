@@ -1271,13 +1271,23 @@ fn index_of(files: &[PathBuf], style: bool, lint: bool) -> Index {
     }
 }
 
-/// Merge two port tables the way `elaborate::entities` does within one: first definition wins.
+/// Merge two port tables the way `elaborate::entities` does within one: the entity's own ports
+/// win over a component declaration repeating them, and otherwise the first definition wins.
 fn merge_entities(
     mut into: vsg_rs::analysis::elaborate::Entities,
     from: vsg_rs::analysis::elaborate::Entities,
 ) -> vsg_rs::analysis::elaborate::Entities {
     for (name, ports) in from {
-        into.entry(name).or_insert(ports);
+        match into.entry(name) {
+            std::collections::btree_map::Entry::Vacant(slot) => {
+                slot.insert(ports);
+            }
+            std::collections::btree_map::Entry::Occupied(mut slot) => {
+                if ports.from_entity && !slot.get().from_entity {
+                    slot.insert(ports);
+                }
+            }
+        }
     }
     into
 }
@@ -1519,7 +1529,11 @@ fn lint_files(
             }
             let reason = vsg_rs::analysis::testbench::classify(&parsed, file, kind_sources);
             let (cfg, naming) = if reason.is_some() { &testbench } else { &rtl };
-            let wiring = vsg_rs::analysis::elaborate::undriven(&parsed, file, entities);
+            let wiring = vsg_rs::analysis::elaborate::undriven(&parsed, file, entities)
+                .into_iter()
+                .chain(vsg_rs::analysis::elaborate::interfaces(
+                    &parsed, file, entities,
+                ));
             let found = vsg_rs::analysis::per_file(&parsed, file, naming, &cfg.synchronizers)
                 .into_iter()
                 .chain(wiring)

@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The twelve rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The thirteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -407,6 +407,47 @@ lint_713 | Error | 13 | 'when others' covers 1 of the values of 'state' (done)
 **Limitations** the same evidence as `lint_712`, so the same cases are out of reach. The two rules
 divide the `others` alternatives between them and never report the same one twice: `lint_712` takes
 those no value can reach, `lint_713` those that do stand in for values.
+
+---
+
+<a id="lint_750"></a>
+## lint_750 — Component does not match its entity
+
+**Detects** a component declaration whose ports differ from those of the entity of the same name:
+a port one has and the other does not, a port with a different mode, or the same ports in a
+different order.
+
+**Why it matters** a component declaration is a hand-written copy of an entity's interface, and
+copies drift. An instance binds to the *component*, so the design goes on elaborating and means
+something other than it reads like — until the binding fails instead, usually much later and
+somewhere else. Differing order is the worst of the three: a positional instantiation then
+connects the wrong signals, and nothing about it looks wrong.
+
+**Evidence** the port names and modes of both declarations, compared directly. Only entities the
+run can see are compared, so a component standing for a vendor primitive is left alone.
+
+**Context** the entity must be among the files being checked. **Severity** error. **Fix** none.
+
+```vhdl
+entity dut is
+  port (clk : in bit; d : in bit; q : out bit);
+end entity dut;
+...
+  component dut is                 -- q is missing, and d has become an output
+    port (clk : in bit; d : out bit; spare : in bit);
+  end component dut;
+```
+
+```text
+lint_750 | Error | 9 | Component 'dut' does not match entity 'dut': it does not declare q;
+                       and it declares, which the entity does not have, spare; and it gives
+                       a different mode to d
+```
+
+**Limitations** compares names and modes, not types or widths — the analyser does not resolve
+type marks across files. Entities are matched by bare name, so two entities of the same name in
+different libraries are treated as one; this is the same assumption `lint_730` makes. A component
+whose entity is not in the file set is not reported at all, rather than guessed at.
 
 ---
 

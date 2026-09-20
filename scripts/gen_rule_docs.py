@@ -36,7 +36,16 @@ CATEGORIES: list[tuple[str, str, tuple[str, ...]]] = [
         "Dataflow and structure",
         "Reported by vsg-rs from the syntax tree plus the design's port connections. The "
         "evidence is structural, so these run without a library map.",
-        ("lint_601", "lint_710", "lint_711", "lint_712", "lint_720", "lint_730", "lint_740"),
+        (
+            "lint_601",
+            "lint_710",
+            "lint_711",
+            "lint_712",
+            "lint_720",
+            "lint_730",
+            "lint_740",
+            "lint_750",
+        ),
     ),
     (
         "Experimental (off by default)",

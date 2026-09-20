@@ -29,6 +29,10 @@ pub struct Ports {
     pub reading: BTreeSet<String>,
     /// Declaration order, for positional association.
     pub order: Vec<String>,
+    /// Whether this came from the entity itself rather than a component declaration repeating
+    /// it. The entity is the authority when the two disagree, which is what `lint_750` reports.
+    #[serde(default)]
+    pub from_entity: bool,
 }
 
 /// Every entity the run can see, by lower-case name.
@@ -40,8 +44,11 @@ fn trimmed(text: &str) -> String {
 }
 
 /// The ports of one entity or component declaration.
-fn ports_of(node: &SyntaxNode) -> Ports {
-    let mut ports = Ports::default();
+fn ports_of(node: &SyntaxNode, from_entity: bool) -> Ports {
+    let mut ports = Ports {
+        from_entity,
+        ..Ports::default()
+    };
     for clause in find(node, NodeKind::PortClause) {
         for declaration in find(&clause, NodeKind::InterfaceObjectDeclaration) {
             let text = text_of(&declaration);
@@ -81,6 +88,7 @@ pub fn entities(files: &[PathBuf]) -> Entities {
             continue;
         }
         for kind in [NodeKind::EntityDeclaration, NodeKind::ComponentDeclaration] {
+            let from_entity = kind == NodeKind::EntityDeclaration;
             for declaration in find(parsed.root(), kind) {
                 let Some(name) = all_tokens(&declaration)
                     .iter()
@@ -89,9 +97,20 @@ pub fn entities(files: &[PathBuf]) -> Entities {
                 else {
                     continue;
                 };
-                // A component declaration repeats an entity; whichever is seen first wins, and
-                // they have to agree anyway.
-                out.entry(name).or_insert_with(|| ports_of(&declaration));
+                // A component declaration repeats an entity, and the entity is the authority:
+                // what an instance really connects to is the entity's ports. Where the two
+                // disagree it is the component that is wrong, and `lint_750` says so.
+                let ports = ports_of(&declaration, from_entity);
+                match out.entry(name) {
+                    std::collections::btree_map::Entry::Vacant(slot) => {
+                        slot.insert(ports);
+                    }
+                    std::collections::btree_map::Entry::Occupied(mut slot) => {
+                        if from_entity && !slot.get().from_entity {
+                            slot.insert(ports);
+                        }
+                    }
+                }
             }
         }
     }
@@ -244,10 +263,117 @@ pub fn undriven(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec<Findin
 }
 
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[(&str, &str)] = &[(
-    "lint_730",
-    "A signal is read but nothing drives it: no assignment, and no instance output.",
-)];
+/// Component declarations in this file that do not match the entity they stand for.
+///
+/// A component declaration is a hand-written copy of an entity's interface, and the two drift:
+/// a port is added to the entity and not to the component, or a mode is changed on one side.
+/// What an instance binds to is decided by the component, so the design keeps elaborating and
+/// means something other than it reads like -- until the day the binding fails instead.
+///
+/// Only entities the run can see are compared, so a component standing for a vendor primitive
+/// is left alone.
+#[must_use]
+pub fn interfaces(parsed: &Parsed, file: &Path, entities: &Entities) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for declaration in find(parsed.root(), NodeKind::ComponentDeclaration) {
+        let Some(name) = all_tokens(&declaration)
+            .iter()
+            .map(lower)
+            .find(|t| t != "component")
+        else {
+            continue;
+        };
+        // Only against the entity itself: a table entry that came from another component
+        // declaration says nothing about which of the two is right.
+        let Some(entity) = entities.get(&name).filter(|p| p.from_entity) else {
+            continue;
+        };
+        let component = ports_of(&declaration, false);
+
+        let missing: Vec<&String> = entity
+            .order
+            .iter()
+            .filter(|p| !component.order.contains(p))
+            .collect();
+        let extra: Vec<&String> = component
+            .order
+            .iter()
+            .filter(|p| !entity.order.contains(p))
+            .collect();
+        let remoded: Vec<&String> = component
+            .order
+            .iter()
+            .filter(|p| entity.order.contains(p))
+            .filter(|p| {
+                entity.driving.contains(*p) != component.driving.contains(*p)
+                    || entity.reading.contains(*p) != component.reading.contains(*p)
+            })
+            .collect();
+        // Order matters only for positional association, and differing order with the same names
+        // is legal and common. It is reported because a positional instantiation then connects
+        // the wrong signals, which is the worst of the three to debug.
+        let reordered = missing.is_empty()
+            && extra.is_empty()
+            && remoded.is_empty()
+            && entity.order != component.order;
+
+        let mut faults = Vec::new();
+        let list = |what: &str, ports: &[&String]| {
+            format!(
+                "{what} {}",
+                ports
+                    .iter()
+                    .map(|p| p.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        if !missing.is_empty() {
+            faults.push(list("does not declare", &missing));
+        }
+        if !extra.is_empty() {
+            faults.push(list("declares, which the entity does not have,", &extra));
+        }
+        if !remoded.is_empty() {
+            faults.push(list("gives a different mode to", &remoded));
+        }
+        if reordered {
+            faults.push("declares its ports in a different order".to_owned());
+        }
+        if faults.is_empty() {
+            continue;
+        }
+        let (line, column) = all_tokens(&declaration)
+            .first()
+            .map_or((1, 1), |token| parsed.line_col(token.text_offset()));
+        findings.push(Finding {
+            file: file.to_path_buf(),
+            rule: "lint_750",
+            line,
+            column,
+            message: format!(
+                "Component '{name}' does not match entity '{name}': it {}. An instance binds to \
+                 the component, so the two disagreeing means the design connects something other \
+                 than it reads like.",
+                faults.join("; and it ")
+            ),
+            related: Vec::new(),
+        });
+    }
+    findings.sort_by_key(|f| (f.line, f.column));
+    findings
+}
+
+pub const RULES: &[(&str, &str)] = &[
+    (
+        "lint_730",
+        "A signal is read but nothing drives it: no assignment, and no instance output.",
+    ),
+    (
+        "lint_750",
+        "A component declaration does not match the entity it stands for.",
+    ),
+];
 
 #[cfg(test)]
 mod tests {
@@ -260,6 +386,96 @@ mod tests {
             .into_iter()
             .map(|f| f.message)
             .collect()
+    }
+
+    /// The findings of `interfaces` for one file, against a project holding `entity`.
+    fn interface_check(entity: &str, source: &str) -> Vec<String> {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("e.vhd");
+        std::fs::write(&path, entity).expect("write");
+        let known = entities(std::slice::from_ref(&path));
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        assert!(parsed.syntax_errors().is_empty(), "test source must parse");
+        interfaces(&parsed, Path::new("top.vhd"), &known)
+            .into_iter()
+            .map(|f| f.message)
+            .collect()
+    }
+
+    const DUT: &str = "entity dut is\n  port (\n    clk : in bit;\n    d : in bit;\n    \
+                       q : out bit\n  );\nend entity dut;\n";
+
+    /// An architecture whose declarative part holds `component`.
+    fn top(component: &str) -> String {
+        format!(
+            "entity top is\nend entity top;\n\narchitecture rtl of top is\n{component}\
+                 begin\nend architecture rtl;\n"
+        )
+    }
+
+    #[test]
+    fn a_component_that_matches_its_entity_is_silent() {
+        let found = interface_check(
+            DUT,
+            &top(
+                "  component dut is\n    port (\n      clk : in bit;\n      d : in bit;\n      \
+                  q : out bit\n    );\n  end component dut;\n",
+            ),
+        );
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_port_the_component_does_not_declare() {
+        let found = interface_check(
+            DUT,
+            &top(
+                "  component dut is\n    port (\n      clk : in bit;\n      d : in bit\n    \
+                  );\n  end component dut;\n",
+            ),
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("does not declare q"), "{found:?}");
+    }
+
+    #[test]
+    fn a_port_the_entity_does_not_have_and_a_changed_mode() {
+        let found = interface_check(
+            DUT,
+            &top(
+                "  component dut is\n    port (\n      clk : in bit;\n      d : out bit;\n      \
+                  q : out bit;\n      spare : in bit\n    );\n  end component dut;\n",
+            ),
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("does not have, spare"), "{found:?}");
+        assert!(found[0].contains("different mode to d"), "{found:?}");
+    }
+
+    #[test]
+    fn the_same_ports_in_a_different_order() {
+        // Legal, and harmless until someone instantiates positionally.
+        let found = interface_check(
+            DUT,
+            &top(
+                "  component dut is\n    port (\n      d : in bit;\n      clk : in bit;\n      \
+                  q : out bit\n    );\n  end component dut;\n",
+            ),
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("different order"), "{found:?}");
+    }
+
+    #[test]
+    fn a_component_for_an_entity_the_run_cannot_see_is_left_alone() {
+        let found = interface_check(
+            "entity other is\nend entity other;\n",
+            &top(
+                "  component vendor_pll is\n    port (\n      refclk : in bit\n    );\n  \
+                  end component vendor_pll;\n",
+            ),
+        );
+        assert!(found.is_empty(), "{found:?}");
     }
 
     fn fifo() -> Entities {

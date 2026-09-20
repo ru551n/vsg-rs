@@ -37,6 +37,17 @@ python scripts/gen_spacing_rules.py VSG_CHECKOUT/docs  # regenerate src/spacing_
 python scripts/gen_rule_docs.py                        # regenerate the docs' rule tables
 ```
 
+```sh
+python scripts/corpus_findings.py --binary target/release/vsg-rs CORPUS...   # record
+python scripts/corpus_findings.py --check --binary target/release/vsg-rs CORPUS...
+```
+
+The second is how the lint layer's claim is kept honest: it counts what vsg-rs's own rules report
+over whole corpora and compares that with `tests/corpus-findings.txt`. A count that goes up is a
+rule saying something new, and it has to be looked at before it is accepted; a count that goes
+down is an improvement worth recording. Three rules were once found reporting false positives on
+code they had never been run over, because each had been checked against a subset of a corpus.
+
 `.github/workflows/compatibility.yml` runs the comparison weekly over two corpora — VUnit, and
 open-logic for its 825 configured rules — and against whatever VSG released most recently.
 

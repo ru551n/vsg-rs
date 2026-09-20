@@ -1,0 +1,5 @@
+# Every native rule, including those off by default: a rule nobody runs is a rule nobody
+# notices reporting nonsense.
+rule:
+  lint_700:
+    disable: false

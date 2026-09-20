@@ -155,3 +155,36 @@ jobs:
         with:
           name: compatibility-latest
           path: .compare-latest
+
+  # What vsg-rs's own rules report over the whole of both corpora, against what they reported
+  # last time. The layer's claim is that a finding is proven, and three rules were once found
+  # reporting false positives on code they had never been run over: each had been validated
+  # against a subset of a corpus rather than all of it. A count that moves has to be explained.
+  precision:
+    name: Native rule findings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: VUnit/vunit
+          ref: bbbe9caba5278dd8057020edc3aeb5f223c0e037
+          path: corpora/vunit
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: open-logic/open-logic
+          ref: ecca8af95295e798b8a3bc6610cb52be9688ae01
+          path: corpora/open-logic
+          persist-credentials: false
+      - run: cargo build --locked --release
+      - name: Compare with what these rules reported last time
+        run: |
+          python3 scripts/corpus_findings.py --check \
+            --binary target/release/vsg-rs \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            corpora/vunit corpora/open-logic

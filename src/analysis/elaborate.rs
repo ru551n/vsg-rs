@@ -108,9 +108,11 @@ struct Instance {
 fn instantiations(architecture: &SyntaxNode) -> Vec<Instance> {
     let mut out = Vec::new();
     for statement in find(architecture, NodeKind::ComponentInstantiationStatement) {
-        let Some(entity) = entity_of(&statement) else {
-            continue;
-        };
+        // A statement whose unit cannot be read is still an instance, and its ports are still
+        // connected to something. Skipping it would silently claim those signals have no driver;
+        // an empty name reaches `undriven` as an entity it does not know, which marks everything
+        // the instance touches as driven. Not knowing must never produce a finding.
+        let entity = entity_of(&statement).unwrap_or_default();
         let mut associations = Vec::new();
         for map in find(&statement, NodeKind::PortMapAspect) {
             for association in find(&map, NodeKind::AssociationElement) {
@@ -267,6 +269,47 @@ mod tests {
         let path = dir.path().join("fifo.vhd");
         std::fs::write(&path, source).expect("write");
         entities(std::slice::from_ref(&path))
+    }
+
+    #[test]
+    fn a_component_instantiation_drives_its_actuals() {
+        // `u : component driver` is the same instance as `u : entity work.driver`, but the
+        // parser gives it a different node. Reading only the entity form meant the unit was
+        // never identified, the instance was skipped, and every signal it drove was reported as
+        // having no driver.
+        let source = "entity tb is\nend entity tb;\n\narchitecture tb of tb is\n\n  \
+                      signal reset : bit;\n\n  component driver is\n    port (\n      \
+                      reset : out bit\n    );\n  end component;\n\nbegin\n\n  \
+                      u : component driver\n    port map (\n      reset => reset\n    );\n\n  \
+                      p : process (reset) is\n  begin\n    report bit'image(reset);\n  \
+                      end process p;\n\nend architecture tb;\n";
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tb.vhd");
+        std::fs::write(&path, source).expect("write");
+        let entities = entities(std::slice::from_ref(&path));
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        let found = undriven(&parsed, &path, &entities);
+        assert!(found.is_empty(), "the component drives reset: {found:?}");
+    }
+
+    #[test]
+    fn an_instance_of_something_unreadable_drives_everything_it_touches() {
+        // Whatever this is, it is connected to `spare`. Not knowing what must not become a claim
+        // that nothing drives it.
+        let source = "entity tb is\nend entity tb;\n\narchitecture tb of tb is\n\n  \
+                      signal spare : bit;\n\nbegin\n\n  u : entity work.nowhere\n    \
+                      port map (\n      q => spare\n    );\n\n  p : process (spare) is\n  \
+                      begin\n    report bit'image(spare);\n  end process p;\n\n\
+                      end architecture tb;\n";
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tb.vhd");
+        std::fs::write(&path, source).expect("write");
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        let found = undriven(&parsed, &path, &Entities::new());
+        assert!(
+            found.is_empty(),
+            "an unknown entity drives what it touches: {found:?}"
+        );
     }
 
     #[test]

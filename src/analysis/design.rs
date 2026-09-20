@@ -64,9 +64,17 @@ pub fn text_of(node: &SyntaxNode) -> String {
 /// The entity a component instantiation names: the last identifier before any architecture in
 /// parentheses, out of `entity work.fifo(rtl)`, `component fifo` or a bare name.
 pub fn entity_of(statement: &SyntaxNode) -> Option<String> {
-    let instantiated = statement
-        .children()
-        .find(|c| c.kind() == NodeKind::InstantiatedEntity)?;
+    // A statement names what it instantiates in one of three ways, and the parser gives each its
+    // own node: `entity work.x`, `component x`, `configuration x`. Reading only the first meant a
+    // component instantiation named nothing, and an instance that names nothing drives nothing.
+    let instantiated = statement.children().find(|c| {
+        matches!(
+            c.kind(),
+            NodeKind::InstantiatedEntity
+                | NodeKind::InstantiatedComponent
+                | NodeKind::InstantiatedConfiguration
+        )
+    })?;
     let text = text_of(&instantiated);
     let head = text.split('(').next().unwrap_or(&text);
     head.rsplit(['.', ' '])

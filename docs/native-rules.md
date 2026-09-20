@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The sixteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The eighteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -579,6 +579,67 @@ process that calls one is left alone rather than resolved. A `wait` that looks u
 counts, because deciding otherwise is a second proof this rule does not need and would risk
 reporting a process that does suspend. Every form of sensitivity list counts, `process (all)`
 included.
+
+---
+
+<a id="lint_780"></a>
+## lint_780 — Index outside the array's range
+
+**Detects** an index written as a literal that falls outside the literal range its array was
+declared with.
+
+**Why it matters** the index is subject to the array's index range, so evaluating it raises an
+error. There is no reading under which the program carries on. Both simulators say so at
+analysis — GHDL *"static expression violates bounds"*, NVC *"array X index 8 outside of NATURAL
+range 7 downto 0"* — and the VHDL front end vsg-rs uses reports neither.
+
+**Evidence** the declared range and the index, both written as integer literals.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+  signal x : bit_vector(7 downto 0);
+  ...
+  y <= x(8);
+```
+
+```text
+lint_780 | Error | 10 | Index 8 is outside the range 0 to 7 of 'x'
+```
+
+**Limitations** the exact case only. A range that mentions a generic or a constant is not
+evaluated, and neither is an index that is anything but a literal — no value is propagated to
+reach an answer. A slice is not an index. A name declared twice with different ranges is left
+alone, because which declaration an index belongs to is a question about scope. `f(8)` is read
+as an index only when `f` is an object this file declares with a range, so a function call of
+the same shape is not reported.
+
+---
+
+<a id="lint_781"></a>
+## lint_781 — Division by zero
+
+**Detects** `/`, `mod` or `rem` whose right operand is written as zero.
+
+**Why it matters** evaluating it raises an error: the LRM leaves the result undefined for a zero
+right operand and requires the error. Unlike the index case, **neither GHDL nor NVC says
+anything about this at analysis**, so nothing warns before the run reaches the statement.
+
+**Evidence** the operator and a literal zero beside it.
+
+**Context** none. **Severity** error. **Fix** none.
+
+```vhdl
+    n := n / 0;
+```
+
+```text
+lint_781 | Error | 9 | Division by zero
+```
+
+**Limitations** a literal zero only. A named constant that happens to be zero needs its value
+propagated to the division, and propagating values is how a rule stops being able to say what it
+knows. `/=` is one token and is not a division.
 
 ---
 

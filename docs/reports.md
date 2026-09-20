@@ -56,6 +56,21 @@ violation still fails the run, it just does not pretend to be technical debt.
 Columns are converted, because SonarQube counts them from zero and every other format here counts
 from one.
 
+## What each format carries about a rule's class
+
+Every format says what it can. None of them is asked to carry a distinction it has no field for.
+
+| Format | How the class appears |
+|---|---|
+| SonarQube | `type`: a definite error is a `BUG`, everything else a `CODE_SMELL` |
+| GitLab code quality | `categories`: `Bug Risk` for a definite error, `Clarity` for advisory and experimental, `Style` for policy and the style layer |
+| SARIF | a tag on the rule, so a consumer that groups by tag can separate them |
+| Console, JSON, JUnit | the rule id, which `--explain` and `--list_rules` describe |
+
+Severity is not the class. An enabled rule reports at `error` and fails the build whatever its
+class, because switching a rule on is asking for it to be enforced. Set `severity: warning` on
+the rule or its group to report without failing.
+
 ## SARIF
 
 ```sh

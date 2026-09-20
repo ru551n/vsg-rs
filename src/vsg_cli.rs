@@ -866,10 +866,18 @@ fn quality_report(results: &[FileResult]) -> String {
         .flat_map(|r| by_rule(r).into_iter().map(move |d| (r, d)))
         .map(|(r, d)| {
             let key = format!("{}:{}:{}:{}", r.name, d.rule, d.line, d.message);
+            // GitLab's own categories, not invented ones: a proven defect is a bug risk, a
+            // rule about how the code reads is clarity, and a convention is style.
+            let category = match vsg_rs::analysis::certainty_of(&d.rule) {
+                Some(vsg_rs::analysis::Certainty::Definite) => "Bug Risk",
+                Some(vsg_rs::analysis::Certainty::Policy) | None => "Style",
+                Some(_) => "Clarity",
+            };
             serde_json::json!({
                 "description": format!("{} :: {}", d.rule, d.message),
                 "fingerprint": fingerprint(&key),
                 "severity": if d.severity == "warning" { "minor" } else { "critical" },
+                "categories": [category],
                 "location": { "path": r.name, "lines": { "begin": d.line } },
             })
         })
@@ -973,6 +981,11 @@ fn sarif_rule(id: &str) -> serde_json::Value {
         "name": id,
         "shortDescription": { "text": description },
     });
+    // What the rule can prove, as a tag: SARIF has no field for it, and a consumer that groups
+    // by tag can then tell a proven defect from something switched on deliberately.
+    if let Some(certainty) = vsg_rs::analysis::certainty_of(id) {
+        rule["properties"] = serde_json::json!({ "tags": [certainty.name()] });
+    }
     if let Some((prefix, number)) = id.rsplit_once('_')
         && vsg_rs::vsg_defaults::rule_ids().any(|known| known == id)
     {
@@ -1191,6 +1204,7 @@ fn lint_rules() -> impl Iterator<Item = vsg_rs::analysis::Rule> {
 fn explain_rule(rule: &str) -> ExitCode {
     let mut out = io::stdout().lock();
     let kind = kind_of(rule);
+    let certainty = vsg_rs::analysis::certainty_of(rule);
     let described = lint_rules()
         .find(|known| known.id == rule)
         .map(|known| known.description.to_owned())
@@ -1205,6 +1219,23 @@ fn explain_rule(rule: &str) -> ExitCode {
     };
     let _ = writeln!(out, "{rule}\n\n{description}\n");
     let _ = writeln!(out, "Layer:     {kind}");
+    // What the rule can prove, and whether that is enough for a default run to use it. Both
+    // come from the rule's own entry, the same one the configuration layer reads.
+    if let Some(certainty) = certainty {
+        let _ = writeln!(out, "Certainty: {}", certainty.name());
+        let _ = writeln!(
+            out,
+            "Default:   {}",
+            if certainty.on_by_default() {
+                "on".to_owned()
+            } else {
+                format!(
+                    "off (rule.{rule}.disable: false, or rule.group.{}.disable: false)",
+                    certainty.group()
+                )
+            }
+        );
+    }
     let _ = writeln!(
         out,
         "Run by:    {}",

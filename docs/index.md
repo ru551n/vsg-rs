@@ -7,8 +7,8 @@ configuration of the [VHDL Style Guide](https://vhdl-style-guide.readthedocs.io/
 
 A bug costs more the longer it takes to find: a moment in your editor, a coffee in CI, an
 afternoon in a waveform viewer, a respin on silicon. Some of what vsg-rs reports a simulator
-would have told you eventually — an index outside its array, a value outside its subtype, a
-process that can never suspend — but only once the testbench exists, the design elaborates and
+would have told you eventually: an index outside its array, a value outside its subtype, a
+process that can never suspend. But only once the testbench exists, the design elaborates and
 the run reaches that line. Some of it no simulator will ever tell you, because the design works
 and simply does not mean what it says.
 

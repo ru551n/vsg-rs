@@ -9,11 +9,11 @@
 
 A VHDL formatter and linter in Rust. Every bug has a price that goes up the longer it takes to
 find: a moment in your editor, a coffee in CI, an afternoon in a waveform viewer, a respin on
-silicon. vsg-rs moves what it can to the cheap end of that scale — the moment you save the file.
+silicon. vsg-rs moves what it can to the cheap end of that scale: the moment you save the file.
 
 Some of what it reports a simulator would have told you eventually: an index outside its array,
 a value outside its subtype, a process that can never suspend. *Eventually* means after you have
-written the testbench, elaborated the design and waited for the run — and only if the run reaches
+written the testbench, elaborated the design and waited for the run, and only if the run reaches
 that line. Some of it no simulator will ever tell you, because the design elaborates perfectly
 well and simply does not mean what it says.
 
@@ -21,7 +21,7 @@ It runs the rule set, command line and configuration of the
 [VHDL Style Guide](https://vhdl-style-guide.readthedocs.io/) (VSG), adds a formatter that fixes
 what it reports, and adds a lint layer that VSG has no equivalent of.
 
-A default lint run reports **definite errors only** — things that cannot work, rather than things
+A default lint run reports **definite errors only**: things that cannot work, rather than things
 worth a look. Everything that depends on what you meant is one line of configuration away.
 
 **Status: beta.** The style layer implements VSG 3.35's rule set and is tested against more than

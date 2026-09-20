@@ -938,3 +938,84 @@ fn a_configuration_naming_nothing_is_reported_once_the_project_is_whole() {
     assert!(out.contains("lint_751"), "{out}");
     assert!(out.contains("nosucharch"), "{out}");
 }
+
+#[test]
+fn every_report_says_what_a_rule_can_prove() {
+    // A rule's class decides how a finding is filed, not which layer it came from. An advisory
+    // rule someone switched on is not a bug however deliberately it was enabled.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = write(
+        dir.path(),
+        "dut.vhd",
+        "entity dut is\n  port (\n    a : in  bit;\n    q : out bit\n  );\nend entity dut;\n\n\
+         architecture rtl of dut is\n  signal floating : bit;\nbegin\n  q <= a;\n  \
+         q <= floating;\n  p : process\n  begin\n    q <= a;\n  end process p;\n\
+         end architecture rtl;\n",
+    );
+    let quality = dir.path().join("quality.json");
+    let sarif = dir.path().join("out.sarif");
+    let out = vsg(
+        &[
+            "lint",
+            file.to_str().unwrap(),
+            "--quality_report",
+            quality.to_str().unwrap(),
+            "--sarif",
+            sarif.to_str().unwrap(),
+            "-c",
+            enabling(dir.path(), "advisory").to_str().unwrap(),
+        ],
+        "",
+    );
+    assert_eq!(out.status.code(), Some(1));
+
+    // GitLab: the format's own categories, one per class.
+    let issues: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&quality).unwrap()).unwrap();
+    let category_of = |rule: &str| -> String {
+        issues
+            .as_array()
+            .expect("issues")
+            .iter()
+            .find(|i| {
+                i["description"]
+                    .as_str()
+                    .is_some_and(|d| d.starts_with(rule))
+            })
+            .and_then(|i| i["categories"][0].as_str())
+            .unwrap_or("missing")
+            .to_owned()
+    };
+    assert_eq!(category_of("lint_770"), "Bug Risk", "{issues}");
+    assert_eq!(category_of("lint_601"), "Clarity", "{issues}");
+
+    // SARIF: the class as a tag on the rule.
+    let doc: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&sarif).unwrap()).unwrap();
+    let tags_of = |rule: &str| -> String {
+        doc["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .expect("rules")
+            .iter()
+            .find(|r| r["id"] == rule)
+            .and_then(|r| r["properties"]["tags"][0].as_str())
+            .unwrap_or("missing")
+            .to_owned()
+    };
+    assert_eq!(tags_of("lint_770"), "definite error");
+    assert_eq!(tags_of("lint_601"), "advisory");
+}
+
+#[test]
+fn explain_says_whether_a_default_run_uses_the_rule() {
+    let definite = vsg(&["--explain", "lint_740"], "");
+    let out = String::from_utf8_lossy(&definite.stdout);
+    assert!(out.contains("Certainty: definite error"), "{out}");
+    assert!(out.contains("Default:   on"), "{out}");
+
+    let advisory = vsg(&["--explain", "lint_712"], "");
+    let out = String::from_utf8_lossy(&advisory.stdout);
+    assert!(out.contains("Certainty: advisory"), "{out}");
+    // And how to switch it on, since that is the next thing anyone asks.
+    assert!(out.contains("rule.group.advisory.disable: false"), "{out}");
+}

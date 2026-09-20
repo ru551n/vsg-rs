@@ -149,8 +149,9 @@ claude mcp add vsg-rs -- vsg-rs mcp
 { "mcpServers": { "vsg-rs": { "command": "vsg-rs", "args": ["mcp"] } } }
 ```
 
-Both take a buffer rather than a path, so an agent can check what it is about to write before
-writing it. Catching a mistake there is one step earlier still.
+`lint` and `format` take a file path or a buffer. A buffer is how an agent checks what it is
+about to write before writing it, which is one step earlier still; `format` with `write` fixes a
+file in place without moving it through the conversation.
 
 ### CI
 

@@ -45,40 +45,58 @@ fn tools() -> Value {
     json!([
         {
             "name": "lint",
-            "description": "Check VHDL source and return what vsg-rs reports about it: syntax \
-                            errors, style violations and lint findings, each with a rule id, a \
-                            position and a message. The same answer `vsg-rs --check style,lint` \
-                            gives for the same bytes.",
+            "description": "Check VHDL and return what vsg-rs reports about it: syntax errors, \
+                            style violations and lint findings, each with a rule id, a position \
+                            and a message. The same answer `vsg-rs --check style,lint` gives for \
+                            the same bytes. Pass `path` alone to check a file, or `source` to \
+                            check a buffer before it is written.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source": { "type": "string", "description": "The VHDL source to check." },
                     "path": {
                         "type": "string",
-                        "description": "What the source is called. Decides which configuration \
-                                        applies. Optional."
+                        "description": "The file to check. With `source`, it is what that \
+                                        source is called rather than what is read."
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "VHDL to check in place of the file, for source that is \
+                                        not written yet or is being edited."
                     }
                 },
-                "required": ["source"]
+                "anyOf": [{ "required": ["path"] }, { "required": ["source"] }]
             }
         },
         {
             "name": "format",
-            "description": "Return the source as vsg-rs would write it: the project's layout, \
-                            with every safe rule fix applied, which is exactly what \
-                            `vsg-rs --fix` writes. Source that does not parse comes back \
-                            unchanged, with the reason.",
+            "description": "Format VHDL as vsg-rs would write it: the project's layout, with \
+                            every safe rule fix applied, which is exactly what `vsg-rs --fix` \
+                            writes. Pass `source` to get the formatted text back, or `path` \
+                            with `write` to fix a file in place without moving it through this \
+                            conversation. Source that does not parse comes back unchanged, with \
+                            the reason, and is never written.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "source": { "type": "string", "description": "The VHDL source to format." },
                     "path": {
                         "type": "string",
-                        "description": "What the source is called, which decides the \
-                                        configuration. Optional."
+                        "description": "The file to format. With `source`, it is what that \
+                                        source is called rather than what is read."
+                    },
+                    "source": {
+                        "type": "string",
+                        "description": "VHDL to format in place of the file, for source that is \
+                                        not written yet or is being edited."
+                    },
+                    "write": {
+                        "type": "boolean",
+                        "description": "Write the result to `path` instead of returning it. \
+                                        Defaults to false; nothing is written unless asked. A \
+                                        file already formatted is left untouched.",
+                        "default": false
                     }
                 },
-                "required": ["source"]
+                "anyOf": [{ "required": ["path"] }, { "required": ["source"] }]
             }
         },
         {
@@ -97,6 +115,30 @@ fn tools() -> Value {
             }
         }
     ])
+}
+
+/// What a call is about: the source to work on, and what it is called.
+///
+/// Either the caller passes the source, and `path` only names it, or it passes a path alone and
+/// the file is read. The second is for source already on disk, where sending the text there and
+/// back is the expensive part of the answer.
+fn subject(arguments: &Value) -> Result<(String, PathBuf), String> {
+    let named = arguments["path"].as_str().unwrap_or_default();
+    if let Some(source) = arguments["source"].as_str() {
+        // An unnamed buffer still needs a name, because the configuration is found from one.
+        let path = if named.is_empty() {
+            "buffer.vhd"
+        } else {
+            named
+        };
+        return Ok((source.to_owned(), PathBuf::from(path)));
+    }
+    if named.is_empty() {
+        return Err("give me either the source to work on or the path of a file".to_owned());
+    }
+    let path = PathBuf::from(named);
+    let source = std::fs::read_to_string(&path).map_err(|e| format!("{named}: {e}"))?;
+    Ok((source, path))
 }
 
 /// The configuration that applies to a name, found the way every other entry point finds it.
@@ -176,19 +218,30 @@ fn lint(source: &str, path: &Path) -> Result<Value, String> {
 
 use vsg_rs::analysis::Certainty;
 
-/// The source as `--fix` would write it.
-fn format(source: &str, path: &Path) -> Result<Value, String> {
+/// The source as `--fix` would write it, and on request written there.
+fn format(source: &str, path: &Path, write: bool) -> Result<Value, String> {
     let cfg = config_for(path)?;
     let parsed = vsg_rs::Parsed::new(source.as_bytes().to_vec());
-    match vsg_rs::fix_with(&parsed, &cfg, &vsg_rs::FixOptions::default()) {
-        Ok(out) => {
-            let text = String::from_utf8(out.output).map_err(|e| e.to_string())?;
-            let changed = text != source;
-            Ok(json!({ "source": text, "changed": changed }))
+    let out = match vsg_rs::fix_with(&parsed, &cfg, &vsg_rs::FixOptions::default()) {
+        Ok(out) => out,
+        // Left exactly as it was, and why, which is what the command line does too. Nothing is
+        // written: source that does not parse is the case where a formatter can do most harm.
+        Err(e) => {
+            return Ok(json!({ "source": source, "changed": false, "error": e.to_string() }));
         }
-        // Left exactly as it was, and why, which is what the command line does too.
-        Err(e) => Ok(json!({ "source": source, "changed": false, "error": e.to_string() })),
+    };
+    let text = String::from_utf8(out.output).map_err(|e| e.to_string())?;
+    let changed = text != source;
+    if !write {
+        return Ok(json!({ "source": text, "changed": changed }));
     }
+    // Nothing to write is not written: a file that is already formatted keeps its timestamp,
+    // so a build that watches it does not rerun because a formatter looked at it.
+    if changed {
+        std::fs::write(path, &text).map_err(|e| format!("{}: {e}", path.display()))?;
+    }
+    // The text is not sent back. Returning it is the whole cost this call exists to avoid.
+    Ok(json!({ "changed": changed, "written": changed, "path": path.display().to_string() }))
 }
 
 /// What a rule reports, how sure it is, and whether a default run uses it.
@@ -211,17 +264,10 @@ fn explain(rule: &str) -> Result<Value, String> {
 /// Run one tool, as a `CallToolResult`.
 fn call(name: &str, arguments: &Value) -> Value {
     let text = |value: &Value| value.as_str().unwrap_or_default().to_owned();
-    let path = || {
-        let named = text(&arguments["path"]);
-        if named.is_empty() {
-            PathBuf::from("buffer.vhd")
-        } else {
-            PathBuf::from(named)
-        }
-    };
+    let write = arguments["write"].as_bool().unwrap_or(false);
     let answer = match name {
-        "lint" => lint(&text(&arguments["source"]), &path()),
-        "format" => format(&text(&arguments["source"]), &path()),
+        "lint" => subject(arguments).and_then(|(source, path)| lint(&source, &path)),
+        "format" => subject(arguments).and_then(|(source, path)| format(&source, &path, write)),
         "explain_rule" => explain(&text(&arguments["rule"])),
         other => Err(format!("no tool called '{other}'")),
     };
@@ -441,6 +487,94 @@ mod tests {
                 .is_some_and(|s| s.contains("entity dut is")),
             "{body}"
         );
+    }
+
+    /// A file already on disk does not have to be sent here to be read.
+    #[test]
+    fn a_path_alone_is_read_from_disk() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("dut.vhd");
+        std::fs::write(&path, "ENTITY   dut IS\nEND dut;\n").expect("the file is written");
+
+        let reply = request(
+            "tools/call",
+            &json!({
+                "name": "format",
+                "arguments": { "path": path.to_str().expect("utf-8") }
+            }),
+        );
+        let body = body_of(&reply);
+        assert_eq!(body["changed"], true);
+        assert!(
+            body["source"]
+                .as_str()
+                .is_some_and(|s| s.starts_with("entity dut is")),
+            "{body}"
+        );
+        // Asked for the text, not for the file to change.
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("still readable"),
+            "ENTITY   dut IS\nEND dut;\n"
+        );
+    }
+
+    /// The point of writing in place: the file never travels through the conversation.
+    #[test]
+    fn write_fixes_the_file_and_returns_no_source() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("dut.vhd");
+        std::fs::write(&path, "ENTITY   dut IS\nEND dut;\n").expect("the file is written");
+
+        let arguments = json!({ "path": path.to_str().expect("utf-8"), "write": true });
+        let body = body_of(&request(
+            "tools/call",
+            &json!({ "name": "format", "arguments": arguments }),
+        ));
+        assert_eq!(body["changed"], true);
+        assert_eq!(body["written"], true);
+        assert!(body["source"].is_null(), "{body}");
+        let on_disk = std::fs::read_to_string(&path).expect("readable");
+        assert_eq!(on_disk, "entity dut is\nend entity dut;\n");
+
+        // Again, on a file that is already formatted: nothing to write, so nothing written.
+        let before = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let body = body_of(&request(
+            "tools/call",
+            &json!({ "name": "format", "arguments": arguments }),
+        ));
+        assert_eq!(body["changed"], false);
+        assert_eq!(body["written"], false);
+        assert_eq!(
+            std::fs::metadata(&path).and_then(|m| m.modified()).ok(),
+            before,
+            "an unchanged file kept its timestamp"
+        );
+    }
+
+    /// The case where a formatter can do the most damage.
+    #[test]
+    fn source_that_does_not_parse_is_never_written() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("dut.vhd");
+        let broken = "entity dut is\nend entity dut\n";
+        std::fs::write(&path, broken).expect("the file is written");
+
+        let body = body_of(&request(
+            "tools/call",
+            &json!({
+                "name": "format",
+                "arguments": { "path": path.to_str().expect("utf-8"), "write": true }
+            }),
+        ));
+        assert_eq!(body["changed"], false);
+        assert!(body["error"].is_string(), "{body}");
+        assert_eq!(std::fs::read_to_string(&path).expect("readable"), broken);
+    }
+
+    #[test]
+    fn a_call_with_neither_source_nor_path_says_so() {
+        let reply = request("tools/call", &json!({ "name": "lint", "arguments": { } }));
+        assert_eq!(reply["result"]["isError"], true);
     }
 
     #[test]

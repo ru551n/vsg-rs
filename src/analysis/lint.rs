@@ -513,63 +513,101 @@ impl Source {
     }
 }
 
-pub fn analyse(sources: &[Source]) -> Result<Analysis, String> {
-    let files: Vec<PathBuf> = sources.iter().map(|s| s.path.clone()).collect();
-    let config = configuration(&files, project_config().as_deref())?;
-    let mut project = Project::from_config(config, &mut Quiet);
-    project.enable_all_linters();
-    // An editor's buffer replaces the file it stands for. `update_source` re-parses in place and
-    // registers a path the project has not seen, which is how an unsaved file is analysed at all.
-    for source in sources.iter().filter(|s| s.text.is_some()) {
-        let Some(text) = source.text.as_deref() else {
-            continue;
-        };
-        // VHDL may be Latin-1; anything that is not valid UTF-8 is replaced rather than refused,
-        // so a buffer is always analysable even while it is being typed.
-        let text = String::from_utf8_lossy(text);
-        project.update_source(&vhdl_lang::Source::inline(&source.path, &text));
-    }
+/// An analysed project, kept so it can be asked again.
+///
+/// Building one parses every file the library map names, plus the `ieee` and `std` libraries that
+/// ship inside the binary. That is most of what a single analysis costs, and it is the same work
+/// every time. An editor asks after every keystroke, so it keeps the project and replaces only
+/// the buffer that changed.
+pub struct Analyser {
+    project: Project,
+    mapped: bool,
+}
 
-    let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    // The inputs, by canonical path, so findings can be mapped back to the name the run was
-    // given and findings in other files (the standard libraries) can be dropped.
-    let wanted: BTreeMap<PathBuf, PathBuf> =
-        files.iter().map(|f| (canonical(f), f.clone())).collect();
-    // `vhdl_lang` parses independently of `vhdl_syntax`, so a file can format but not analyse.
-    let unanalysed: Vec<PathBuf> = wanted
-        .iter()
-        .filter(|(canonical, given)| {
-            project.get_source(canonical).is_none() && project.get_source(given).is_none()
+impl Analyser {
+    /// Read the project's library map, or treat the given files as one library when it has none.
+    ///
+    /// # Errors
+    /// If the configuration names something that cannot be read.
+    pub fn new(sources: &[Source]) -> Result<Analyser, String> {
+        let files: Vec<PathBuf> = sources.iter().map(|s| s.path.clone()).collect();
+        let config = configuration(&files, project_config().as_deref())?;
+        let mut project = Project::from_config(config, &mut Quiet);
+        project.enable_all_linters();
+        Ok(Analyser {
+            project,
+            mapped: project_config().is_some(),
         })
-        .map(|(_, given)| given.clone())
-        .collect();
-
-    let mut findings = Vec::new();
-    for d in project.analyse() {
-        let Some((rule, _)) = rule_of(&format!("{:?}", d.code)) else {
-            continue;
-        };
-        let Some(given) = wanted.get(&canonical(d.pos.source.file_name())) else {
-            continue;
-        };
-        let (line, column) = position(&d.pos);
-        findings.push(Finding {
-            file: given.clone(),
-            rule,
-            line,
-            column,
-            message: message(&d),
-            related: Vec::new(),
-        });
     }
-    findings.sort_by(|a, b| {
-        (&a.file, a.line, a.column, a.rule).cmp(&(&b.file, b.line, b.column, b.rule))
-    });
-    Ok(Analysis {
-        findings,
-        unanalysed,
-        mapped: project_config().is_some(),
-    })
+
+    /// Analyse, with each source's buffer standing in for its file where it has one.
+    pub fn analyse(&mut self, sources: &[Source]) -> Analysis {
+        // An editor's buffer replaces the file it stands for. `update_source` re-parses in place
+        // and registers a path the project has not seen, which is how an unsaved file is
+        // analysed at all.
+        for source in sources.iter().filter(|s| s.text.is_some()) {
+            let Some(text) = source.text.as_deref() else {
+                continue;
+            };
+            // VHDL may be Latin-1; anything that is not valid UTF-8 is replaced rather than
+            // refused, so a buffer is always analysable even while it is being typed.
+            let text = String::from_utf8_lossy(text);
+            self.project
+                .update_source(&vhdl_lang::Source::inline(&source.path, &text));
+        }
+
+        let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        // The inputs, by canonical path, so findings can be mapped back to the name the run was
+        // given and findings in other files (the standard libraries) can be dropped.
+        let wanted: BTreeMap<PathBuf, PathBuf> = sources
+            .iter()
+            .map(|s| (canonical(&s.path), s.path.clone()))
+            .collect();
+        // `vhdl_lang` parses independently of `vhdl_syntax`, so a file can format but not analyse.
+        let unanalysed: Vec<PathBuf> = wanted
+            .iter()
+            .filter(|(canonical, given)| {
+                self.project.get_source(canonical).is_none()
+                    && self.project.get_source(given).is_none()
+            })
+            .map(|(_, given)| given.clone())
+            .collect();
+
+        let mut findings = Vec::new();
+        for d in self.project.analyse() {
+            let Some((rule, _)) = rule_of(&format!("{:?}", d.code)) else {
+                continue;
+            };
+            let Some(given) = wanted.get(&canonical(d.pos.source.file_name())) else {
+                continue;
+            };
+            let (line, column) = position(&d.pos);
+            findings.push(Finding {
+                file: given.clone(),
+                rule,
+                line,
+                column,
+                message: message(&d),
+                related: Vec::new(),
+            });
+        }
+        findings.sort_by(|a, b| {
+            (&a.file, a.line, a.column, a.rule).cmp(&(&b.file, b.line, b.column, b.rule))
+        });
+        Analysis {
+            findings,
+            unanalysed,
+            mapped: self.mapped,
+        }
+    }
+}
+
+/// Analyse once. A caller that asks repeatedly should keep an [`Analyser`] instead.
+///
+/// # Errors
+/// If the project configuration cannot be read.
+pub fn analyse(sources: &[Source]) -> Result<Analysis, String> {
+    Ok(Analyser::new(sources)?.analyse(sources))
 }
 
 #[cfg(test)]

@@ -37,6 +37,10 @@ struct Document {
 pub(crate) struct Backend {
     client: Client,
     documents: Arc<RwLock<HashMap<Uri, Document>>>,
+    /// The analysed project, kept between edits. Building it parses every file the library map
+    /// names plus the embedded `ieee` and `std`, which is most of what an analysis costs and is
+    /// the same work every time; only the edited buffer changes.
+    analyser: Arc<tokio::sync::Mutex<Option<analysis::lint::Analyser>>>,
 }
 
 /// The configuration that applies to a file, found the way the command line finds it: the
@@ -115,10 +119,16 @@ impl Backend {
     /// Analyse one document exactly as `--check style,lint` would, and publish the result.
     async fn publish(&self, uri: Uri, text: String, version: i32) {
         let path = path_of(&uri);
+        // One analysis at a time: the project is shared, and two edits analysing it at once
+        // would each see the other's buffer half applied.
+        let analyser = Arc::clone(&self.analyser);
         let diagnostics = tokio::task::spawn_blocking({
             let path = path.clone();
             let text = text.clone();
-            move || diagnose(&path, &text)
+            move || {
+                let mut held = analyser.blocking_lock();
+                diagnose(&path, &text, &mut held)
+            }
         })
         .await
         .unwrap_or_default();
@@ -142,7 +152,11 @@ impl Backend {
 
 /// Everything vsg-rs reports about one buffer: the style rules and the lint layer, from the same
 /// entry points the command line calls.
-fn diagnose(path: &Path, text: &str) -> Vec<Diagnostic> {
+fn diagnose(
+    path: &Path,
+    text: &str,
+    analyser: &mut Option<analysis::lint::Analyser>,
+) -> Vec<Diagnostic> {
     let cfg = config_for(path);
     let parsed = vsg_rs::Parsed::new(text.as_bytes().to_vec());
     let mut out = Vec::new();
@@ -186,19 +200,24 @@ fn diagnose(path: &Path, text: &str) -> Vec<Diagnostic> {
     // The front end's rules too, so an editor sees what `--check style,lint` sees. They need the
     // project's library map; without one only a few of them report, exactly as on the command
     // line. The buffer stands in for the file, so an unsaved edit is what gets analysed.
-    let resolved = analysis::lint::analyse(&[analysis::lint::Source::buffer(
+    let sources = [analysis::lint::Source::buffer(
         path.to_path_buf(),
         text.as_bytes().to_vec(),
-    )]);
+    )];
+    if analyser.is_none() {
+        *analyser = analysis::lint::Analyser::new(&sources).ok();
+    }
+    let resolved = analyser.as_mut().map(|analyser| analyser.analyse(&sources));
     let front_end = match resolved {
-        Ok(analysis) if analysis.mapped => analysis.findings,
+        Some(analysis) if analysis.mapped => analysis.findings,
         // Without a library map most rules cannot run; the few that can are still worth having.
-        Ok(analysis) => analysis
+        Some(analysis) => analysis
             .findings
             .into_iter()
             .filter(|f| analysis::lint::needs_no_library_map(f.rule))
             .collect(),
-        Err(_) => Vec::new(),
+        // The project could not be built at all; the rules that need it simply do not report.
+        None => Vec::new(),
     };
 
     for finding in analysis::findings_for(&parsed, path, &cfg)
@@ -518,6 +537,7 @@ pub(crate) fn serve() -> std::process::ExitCode {
         let (service, socket) = LspService::new(|client| Backend {
             client,
             documents: Arc::new(RwLock::new(HashMap::new())),
+            analyser: Arc::new(tokio::sync::Mutex::new(None)),
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket)
             .serve(service)

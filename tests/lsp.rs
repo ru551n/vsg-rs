@@ -17,6 +17,8 @@ fn frame(body: &serde_json::Value) -> Vec<u8> {
 struct Session {
     child: Child,
     reader: std::sync::mpsc::Receiver<u8>,
+    /// Whether the handshake has been done, so a second exchange does not repeat it.
+    started: bool,
     /// Everything read so far. It lives on the session, because a read that stops at one message
     /// must not throw away the bytes of the next.
     raw: Vec<u8>,
@@ -50,6 +52,7 @@ impl Session {
             child,
             reader,
             raw: Vec::new(),
+            started: false,
         }
     }
 
@@ -87,11 +90,14 @@ impl Session {
         messages: &[serde_json::Value],
         done: impl Fn(&[serde_json::Value]) -> bool,
     ) -> Vec<serde_json::Value> {
-        self.send(&initialize());
-        self.read_until(1);
-        self.send(&serde_json::json!({
-            "jsonrpc": "2.0", "method": "initialized", "params": {}
-        }));
+        if !self.started {
+            self.started = true;
+            self.send(&initialize());
+            self.read_until(1);
+            self.send(&serde_json::json!({
+                "jsonrpc": "2.0", "method": "initialized", "params": {}
+            }));
+        }
         for message in messages {
             self.send(message);
         }
@@ -348,6 +354,82 @@ fn the_front_ends_rules_reach_the_editor_too() {
     // lint_004 comes from the VHDL front end, not from vsg-rs's own rules: an editor sees what
     // `--check style,lint` sees, not a subset of it.
     assert!(codes.contains(&"lint_004"), "{codes:?}");
+}
+
+#[test]
+fn the_kept_project_follows_the_buffer() {
+    // The analysed project is kept between edits rather than rebuilt, which is what makes an
+    // editor answer quickly. A cache that goes stale would be worse than a slow one: these
+    // assert that a finding appears when an edit creates it and goes when an edit removes it.
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src")).expect("mkdir");
+    std::fs::write(
+        dir.path().join("vhdl_ls.toml"),
+        "[libraries]\nmylib.files = [\"src/*.vhd\"]\n",
+    )
+    .expect("write config");
+    let file = dir.path().join("src/e.vhd");
+    let clean = "entity e is\nend entity e;\n\narchitecture rtl of e is\n\nbegin\n\n\
+                 end architecture rtl;\n";
+    let with_spare = "entity e is\nend entity e;\n\narchitecture rtl of e is\n\n  \
+                      signal spare : bit;\n\nbegin\n\nend architecture rtl;\n";
+    std::fs::write(&file, clean).expect("write source");
+
+    let uri = file_uri(&file);
+    let mut session = Session::start_in(dir.path());
+    let got = session.talk_while(
+        &[
+            did_open(&uri, clean),
+            // An edit that introduces an unused signal.
+            serde_json::json!({
+                "jsonrpc": "2.0", "method": "textDocument/didChange",
+                "params": {
+                    "textDocument": { "uri": uri, "version": 2 },
+                    "contentChanges": [{ "text": with_spare }]
+                }
+            }),
+        ],
+        |seen| {
+            seen.iter().any(|m| {
+                m["method"] == "textDocument/publishDiagnostics" && m["params"]["version"] == 2
+            })
+        },
+    );
+    let version = |n: i64| {
+        got.iter()
+            .filter(|m| m["method"] == "textDocument/publishDiagnostics")
+            .find(|m| m["params"]["version"] == n)
+            .map(|m| m["params"]["diagnostics"].to_string())
+    };
+    assert!(
+        version(2).expect("the edit was analysed").contains("spare"),
+        "a signal the edit added is reported"
+    );
+
+    // And back again: the finding goes when the edit that caused it does.
+    let got = session.talk_while(
+        &[serde_json::json!({
+            "jsonrpc": "2.0", "method": "textDocument/didChange",
+            "params": {
+                "textDocument": { "uri": uri, "version": 3 },
+                "contentChanges": [{ "text": clean }]
+            }
+        })],
+        |seen| {
+            seen.iter().any(|m| {
+                m["method"] == "textDocument/publishDiagnostics" && m["params"]["version"] == 3
+            })
+        },
+    );
+    let last = got
+        .iter()
+        .filter(|m| m["method"] == "textDocument/publishDiagnostics")
+        .find(|m| m["params"]["version"] == 3)
+        .expect("the third version was analysed");
+    assert!(
+        !last["params"]["diagnostics"].to_string().contains("spare"),
+        "the finding goes with the signal: {last}"
+    );
 }
 
 #[test]

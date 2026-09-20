@@ -231,7 +231,41 @@ pub fn is_not_combinational(process: &SyntaxNode) -> bool {
 /// A branch that cannot be shown to assign contributes nothing: an `if` without `else`, a `case`
 /// without `others`, a loop that may run zero times. That is what makes the difference between a
 /// default assignment (no latch) and a conditional one (latch).
-fn always_assigned(statements: &[SyntaxNode], kinds: &[NodeKind]) -> BTreeSet<String> {
+/// The generics a file's entities declare.
+///
+/// A branch guarded by a generic is decided when the design elaborates, not while it runs, and
+/// vsg-rs does not evaluate generics. Treating such a branch as a path that leaves a signal
+/// unassigned accuses code of a latch that only exists for a value nobody has chosen yet.
+fn generic_names(root: &SyntaxNode) -> BTreeSet<String> {
+    find(root, NodeKind::GenericClause)
+        .iter()
+        .flat_map(|clause| find(clause, NodeKind::InterfaceObjectDeclaration))
+        .flat_map(|declaration| {
+            all_tokens(&declaration)
+                .iter()
+                .map(lower)
+                .take_while(|token| token != ":")
+                .filter(|token| token != "," && token != "constant")
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// Whether an `if` decides which branch exists before the design runs, by testing a generic.
+fn decided_at_elaboration(statement: &SyntaxNode, generics: &BTreeSet<String>) -> bool {
+    !generics.is_empty()
+        && all_tokens(statement)
+            .iter()
+            .map(lower)
+            .take_while(|token| token != "then")
+            .any(|token| generics.contains(&token))
+}
+
+fn always_assigned(
+    statements: &[SyntaxNode],
+    kinds: &[NodeKind],
+    generics: &BTreeSet<String>,
+) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for statement in statements {
         match statement.kind() {
@@ -240,17 +274,22 @@ fn always_assigned(statements: &[SyntaxNode], kinds: &[NodeKind]) -> BTreeSet<St
                     .children()
                     .find(|c| c.kind() == NodeKind::IfStatementElse)
                 else {
-                    continue; // No `else`: some path assigns nothing.
+                    // No `else`: some path assigns nothing -- unless a generic decides whether
+                    // the branch exists, in which case the path is not one the design can take.
+                    if decided_at_elaboration(statement, generics) {
+                        out.extend(always_assigned(&body(statement), kinds, generics));
+                    }
+                    continue;
                 };
                 let mut branches: Vec<BTreeSet<String>> =
-                    vec![always_assigned(&body(statement), kinds)];
+                    vec![always_assigned(&body(statement), kinds, generics)];
                 branches.extend(
                     statement
                         .children()
                         .filter(|c| c.kind() == NodeKind::IfStatementElsif)
-                        .map(|elsif| always_assigned(&body(&elsif), kinds)),
+                        .map(|elsif| always_assigned(&body(&elsif), kinds, generics)),
                 );
-                branches.push(always_assigned(&body(&otherwise), kinds));
+                branches.push(always_assigned(&body(&otherwise), kinds, generics));
                 out.extend(intersection(branches));
             }
             NodeKind::CaseStatement => {
@@ -268,7 +307,7 @@ fn always_assigned(statements: &[SyntaxNode], kinds: &[NodeKind]) -> BTreeSet<St
                 out.extend(intersection(
                     alternatives
                         .iter()
-                        .map(|a| always_assigned(&body(a), kinds))
+                        .map(|a| always_assigned(&body(a), kinds, generics))
                         .collect(),
                 ));
             }
@@ -280,7 +319,7 @@ fn always_assigned(statements: &[SyntaxNode], kinds: &[NodeKind]) -> BTreeSet<St
                     .find(|c| c.kind() == NodeKind::LoopStatementPreamble)
                     .is_some_and(|p| text_of(&p).starts_with("for")) =>
             {
-                out.extend(always_assigned(&body(statement), kinds));
+                out.extend(always_assigned(&body(statement), kinds, generics));
             }
             kind if kinds.contains(&kind) => {
                 out.extend(target(statement).map(|(name, _)| name));
@@ -381,21 +420,25 @@ fn variable_latches(process: &SyntaxNode, statements: &[SyntaxNode]) -> Vec<(Str
         // By the object, not the element: a loop that fills `v(0)` and then reads `v(0)` on the
         // next iteration is ordinary code, and proving that needs more than syntax.
         assigned.extend(
-            always_assigned(std::slice::from_ref(statement), VARIABLE_ASSIGNMENTS)
-                .iter()
-                .map(|name| path(name).0),
+            always_assigned(
+                std::slice::from_ref(statement),
+                VARIABLE_ASSIGNMENTS,
+                &BTreeSet::new(),
+            )
+            .iter()
+            .map(|name| path(name).0),
         );
     }
     out.into_iter().collect()
 }
 
 /// Signals a process assigns somewhere but not on every path: each has to remember its value.
-fn latches(process: &SyntaxNode) -> Vec<(String, usize)> {
+fn latches(process: &SyntaxNode, generics: &BTreeSet<String>) -> Vec<(String, usize)> {
     let statements: Vec<SyntaxNode> = find(process, NodeKind::ProcessStatementPart)
         .iter()
         .flat_map(body)
         .collect();
-    let always = always_assigned(&statements, ASSIGNMENTS);
+    let always = always_assigned(&statements, ASSIGNMENTS, generics);
     // Assigning a whole object assigns its parts, so `rec` covers `rec.a` and `q` covers `q(3)`.
     // (For counting drivers the parts stay apart; here the question is only whether a value was
     // given at all.)
@@ -530,8 +573,42 @@ fn targets_overlap(left: &str, right: &str) -> bool {
     true
 }
 
+/// The scope a driver of `name` belongs to: the innermost `block` that declares a signal of that
+/// name, identified by where it starts.
+///
+/// A `block` can declare signals of its own, and two blocks that each declare `state` are driving
+/// two different signals. Comparing them by name alone reports a conflict that does not exist.
+/// A signal the blocks do not declare is still the architecture's, so two blocks driving it are
+/// still compared.
+fn declaring_block(statement: &SyntaxNode, name: &str) -> Option<usize> {
+    // The statement itself may be the block: the walk starts there, not above it.
+    let mut at = Some(statement.clone());
+    while let Some(node) = at {
+        if node.kind() == NodeKind::BlockStatement
+            && find(&node, NodeKind::BlockDeclarativePart)
+                .iter()
+                .flat_map(|part| find(part, NodeKind::SignalDeclaration))
+                .any(|declaration| {
+                    all_tokens(&declaration)
+                        .iter()
+                        .map(lower)
+                        .take_while(|token| token != ":")
+                        .any(|token| token == name)
+                })
+        {
+            return all_tokens(&node)
+                .first()
+                .map(vhdl_syntax::syntax::SyntaxToken::text_offset);
+        }
+        at = node.parent();
+    }
+    None
+}
+
 pub fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) -> Vec<Finding> {
     let mut findings = Vec::new();
+    // Read once: a branch guarded by one of these is decided before the design runs.
+    let generics = generic_names(parsed.root());
     let at = |offset: usize| parsed.line_col(offset);
 
     for architecture in find(parsed.root(), NodeKind::ArchitectureBody) {
@@ -584,6 +661,7 @@ pub fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) -> Vec<Fi
                     continue;
                 }
                 seen.push(name.clone());
+                let scope = declaring_block(&statement, &name).unwrap_or(scope);
                 drivers.push((name, offset, scope));
             }
         }
@@ -677,7 +755,7 @@ pub fn check(parsed: &Parsed, file: &std::path::Path, naming: &Naming) -> Vec<Fi
             if is_not_combinational(&process) {
                 continue;
             }
-            for (name, offset) in latches(&process) {
+            for (name, offset) in latches(&process, &generics) {
                 let (line, column) = at(offset);
                 findings.push(Finding {
                     file: file.to_path_buf(),
@@ -741,6 +819,70 @@ mod tests {
 
     const PREAMBLE: &str = "entity dut is\nend entity;\n\narchitecture rtl of dut is\n  \
                             signal a, b, c, d, clk : bit;\nbegin\n";
+
+    #[test]
+    fn two_blocks_that_each_declare_a_signal_drive_two_signals() {
+        // A `block` can declare signals of its own. Two blocks that each declare `state` and
+        // each drive it are driving different signals, however alike the names look.
+        let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n\nbegin\n\n  \
+                      one : block is\n    signal state : bit;\n  begin\n    \
+                      state <= '0';\n  end block one;\n\n  two : block is\n    \
+                      signal state : bit;\n  begin\n    state <= '1';\n  end block two;\n\n\
+                      end architecture rtl;\n";
+        assert!(
+            !check_source(source)
+                .iter()
+                .any(|(rule, _)| *rule == "lint_601"),
+            "each block drives its own signal"
+        );
+    }
+
+    #[test]
+    fn two_blocks_driving_one_shared_signal_still_conflict() {
+        // The architecture's own signal is one signal, wherever it is driven from.
+        let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n\n  \
+                      signal shared_one : bit;\n\nbegin\n\n  one : block is\n  begin\n    \
+                      shared_one <= '0';\n  end block one;\n\n  two : block is\n  begin\n    \
+                      shared_one <= '1';\n  end block two;\n\nend architecture rtl;\n";
+        assert!(
+            check_source(source)
+                .iter()
+                .any(|(rule, _)| *rule == "lint_601"),
+            "one signal, two drivers"
+        );
+    }
+
+    #[test]
+    fn a_branch_a_generic_decides_is_not_a_latch() {
+        // `if Implement_g then` picks a branch when the design elaborates. vsg-rs does not
+        // evaluate generics, so the path where the branch is absent is not one it can claim
+        // leaves a signal unassigned.
+        let source = "entity dut is\n  generic (\n    implement_g : boolean := true\n  );\n  \
+                      port (\n    a : in  bit;\n    q : out bit\n  );\nend entity dut;\n\n\
+                      architecture rtl of dut is\n\nbegin\n\n  p : process (all) is\n  \
+                      begin\n    if implement_g then\n      q <= a;\n    end if;\n  \
+                      end process p;\n\nend architecture rtl;\n";
+        assert!(
+            !check_source(source)
+                .iter()
+                .any(|(rule, _)| *rule == "lint_600"),
+            "a generic decides this before the design runs"
+        );
+    }
+
+    #[test]
+    fn a_branch_a_signal_decides_is_still_a_latch() {
+        let source = "entity dut is\n  port (\n    sel : in  bit;\n    a : in  bit;\n    \
+                      q : out bit\n  );\nend entity dut;\n\narchitecture rtl of dut is\n\n\
+                      begin\n\n  p : process (all) is\n  begin\n    if sel = '1' then\n      \
+                      q <= a;\n    end if;\n  end process p;\n\nend architecture rtl;\n";
+        assert!(
+            check_source(source)
+                .iter()
+                .any(|(rule, _)| *rule == "lint_600"),
+            "a signal decides this while the design runs"
+        );
+    }
 
     #[test]
     fn every_driver_is_a_related_location() {

@@ -4,6 +4,7 @@ use std::process::ExitCode;
 
 mod local_rules;
 mod lsp;
+mod mcp;
 mod vsg_cli;
 mod waivers;
 

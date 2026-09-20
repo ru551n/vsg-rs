@@ -88,10 +88,14 @@ Sharing the crates is not the same as sharing the job. The division is:
 | **vhdl_ls** | what a name means and where it is: completion, hover, go to definition, references, rename, symbols |
 | **vsg-rs** | how the source should look and what it does wrong: formatting, style rules, static analysis, fixes |
 
-`vsg-rs lsp` advertises only the second half, and [says so in its capabilities](lsp.md) — it
+`vsg-rs lsp` advertises only the second half, and [says so in its capabilities](lsp.md): it
 answers no completion, hover, definition, reference, rename or symbol request, so an editor never
 asks it for one. The two are independent: neither requires the other, and installing both gives
 the union rather than a conflict.
+
+[`vsg-rs mcp`](mcp.md) is the same half again, for a reader that is a coding agent rather than an
+editor. It is a façade over the same library entry points, so an agent and a person are told the
+same thing about the same file.
 
 The rule this sets is about *behaviour*, not dependencies. A capability belonging to the left
 column does not move into vsg-rs because the crate that could implement it is linked already. If

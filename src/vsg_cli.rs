@@ -1739,6 +1739,10 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     if command_line.get(1).is_some_and(|a| a == "lsp") && !Path::new("lsp").exists() {
         return crate::lsp::serve();
     }
+    // `vsg-rs mcp` answers the same questions to a coding agent over the Model Context Protocol.
+    if command_line.get(1).is_some_and(|a| a == "mcp") && !Path::new("mcp").exists() {
+        return crate::mcp::serve();
+    }
     let worker = std::env::var_os(WORKER_ENV).is_some();
     let args = match Args::try_parse_from(normalize(command_line.iter().cloned())) {
         Ok(args) => args,

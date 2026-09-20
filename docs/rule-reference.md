@@ -82,6 +82,8 @@ The fact is exact and the conclusion is a judgement. An unused declaration reall
 | `lint_005` | `library work` is implicit and does not need declaring. |
 | `lint_006` | A context clause is not attached to any design unit. |
 | [`lint_601`](native-rules.md#lint_601) | A signal is assigned by more than one concurrent statement. |
+| [`lint_702`](native-rules.md#lint_702) | A register a clocked process assigns but its reset branch does not. |
+| [`lint_703`](native-rules.md#lint_703) | A clock used on both its rising and its falling edge. |
 | [`lint_710`](native-rules.md#lint_710) | A state of an enumerated state machine is never entered. |
 | [`lint_711`](native-rules.md#lint_711) | A state of an enumerated state machine has no exit. |
 | [`lint_712`](native-rules.md#lint_712) | A 'when others' alternative that no value can reach. |

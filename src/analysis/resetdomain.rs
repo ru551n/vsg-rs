@@ -167,17 +167,79 @@ pub fn check(parsed: &Parsed, file: &Path) -> Vec<Finding> {
             }
         }
     }
+    incomplete_resets(parsed, file, &mut findings);
     findings.sort_by_key(|f| (f.line, f.column));
     findings.dedup_by(|a, b| a.line == b.line && a.message == b.message);
     findings
 }
 
+/// Report registers a clocked process assigns but its reset branch leaves alone.
+///
+/// The reset branch says what the design starts from. A register assigned in the clocked branch
+/// and not in the reset branch starts from whatever it happens to hold, which is usually an
+/// oversight and sometimes deliberate: a data path register often costs more to reset than the
+/// reset is worth, and designers leave those out on purpose. The rule states the fact and leaves
+/// the judgement, which is why it is advisory.
+fn incomplete_resets(parsed: &Parsed, file: &Path, findings: &mut Vec<Finding>) {
+    for process in find(parsed.root(), NodeKind::ProcessStatement) {
+        let Some(reset) = reset_of(&process) else {
+            continue;
+        };
+        // Everything before the `elsif` that carries the clock edge is the reset branch.
+        let tokens = all_tokens(&process);
+        let Some(boundary) = tokens.iter().enumerate().find_map(|(at, token)| {
+            let next = tokens.get(at + 1).map(lower)?;
+            (lower(token) == "elsif"
+                && matches!(next.as_str(), "rising_edge" | "falling_edge" | "'event"))
+            .then(|| token.text_offset())
+        }) else {
+            continue;
+        };
+
+        let mut cleared: BTreeSet<String> = BTreeSet::new();
+        let mut assigned: BTreeMap<String, usize> = BTreeMap::new();
+        for (target, offset) in assignments(&process) {
+            let name = path(&target).0;
+            if offset < boundary {
+                cleared.insert(name);
+            } else {
+                assigned.entry(name).or_insert(offset);
+            }
+        }
+        for (name, offset) in assigned {
+            if cleared.contains(&name) {
+                continue;
+            }
+            let (line, column) = parsed.line_col(offset);
+            findings.push(Finding {
+                file: file.to_path_buf(),
+                rule: "lint_702",
+                line,
+                column,
+                message: format!(
+                    "Signal \'{name}\' is assigned by this process but not by its \'{reset}\' \
+                     branch, so it starts from whatever it happens to hold rather than from a \
+                     known value"
+                ),
+                related: Vec::new(),
+            });
+        }
+    }
+}
+
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[super::Rule] = &[super::Rule {
-    id: "lint_701",
-    description: "A register reset by one signal is used in logic reset by another.",
-    certainty: super::Certainty::Experimental,
-}];
+pub const RULES: &[super::Rule] = &[
+    super::Rule {
+        id: "lint_701",
+        description: "A register reset by one signal is used in logic reset by another.",
+        certainty: super::Certainty::Experimental,
+    },
+    super::Rule {
+        id: "lint_702",
+        description: "A register a clocked process assigns but its reset branch does not.",
+        certainty: super::Certainty::Advisory,
+    },
+];
 
 #[cfg(test)]
 mod tests {
@@ -258,6 +320,62 @@ mod tests {
         let source = "entity dut is\n  port (en : in bit; d : in bit);\nend entity dut;\n\n\
                       architecture rtl of dut is\n  signal a : bit;\nbegin\n  \
                       p : process (en, d) is\n  begin\n    a <= '0';\n    if en = '1' then\n      \
+                      a <= d;\n    end if;\n  end process p;\nend architecture rtl;\n";
+        assert!(check_source(source).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod reset_branch_tests {
+    use super::*;
+
+    fn check_source(source: &str) -> Vec<String> {
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        assert!(parsed.syntax_errors().is_empty(), "test source must parse");
+        check(&parsed, Path::new("dut.vhd"))
+            .into_iter()
+            .filter(|f| f.rule == "lint_702")
+            .map(|f| f.message)
+            .collect()
+    }
+
+    /// One clocked process with an asynchronous reset: `cleared` in the reset branch, `clocked`
+    /// after it.
+    fn process(cleared: &str, clocked: &str) -> String {
+        format!(
+            "entity dut is\n  port (clk : in bit; rst : in bit; d : in bit);\nend entity dut;\n\n\
+             architecture rtl of dut is\n  signal a, b : bit;\nbegin\n  \
+             p : process (clk, rst) is\n  begin\n    if rst = '1' then\n{cleared}    \
+             elsif rising_edge(clk) then\n{clocked}    end if;\n  end process p;\n\
+             end architecture rtl;\n"
+        )
+    }
+
+    #[test]
+    fn a_register_the_reset_branch_forgets() {
+        let found = check_source(&process(
+            "      a <= '0';\n",
+            "      a <= d;\n      b <= d;\n",
+        ));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("'b' is assigned"), "{found:?}");
+        assert!(found[0].contains("'rst' branch"), "{found:?}");
+    }
+
+    #[test]
+    fn a_reset_branch_that_covers_everything_is_silent() {
+        let found = check_source(&process(
+            "      a <= '0';\n      b <= '0';\n",
+            "      a <= d;\n      b <= d;\n",
+        ));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn a_process_with_no_reset_has_no_branch_to_judge() {
+        let source = "entity dut is\n  port (clk : in bit; d : in bit);\nend entity dut;\n\n\
+                      architecture rtl of dut is\n  signal a : bit;\nbegin\n  \
+                      p : process (clk) is\n  begin\n    if rising_edge(clk) then\n      \
                       a <= d;\n    end if;\n  end process p;\nend architecture rtl;\n";
         assert!(check_source(source).is_empty());
     }

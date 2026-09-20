@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The twenty rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The twenty-two rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -233,6 +233,63 @@ clock edge, and a synchronous reset is ordinary clocked logic that crosses nothi
 first test inside `if rising_edge(clk) then` also cannot tell a reset from a clock enable, which
 is exactly the mistake an earlier version made. A register cleared by two different resets is
 left alone rather than guessed at.
+
+---
+
+<a id="lint_702"></a>
+## lint_702 — Register the reset branch does not clear
+
+**Detects** a register a clocked process assigns, that its reset branch does not. Off by default.
+
+**Why it matters** the reset branch says what the design starts from. A register missing from it
+starts from whatever it happens to hold. Often that is an oversight; sometimes it is deliberate,
+because a wide data path costs more to reset than the reset is worth. The rule states the fact
+and leaves the judgement, which is why it is advisory.
+
+**Evidence** the assignment targets in the reset branch, against those in the clocked branch.
+
+**Context** none. **Severity** error. **Fix** none. **Off by default.**
+
+```vhdl
+    if rst = '1' then
+      a <= '0';                 -- b is not cleared
+    elsif rising_edge(clk) then
+      a <= d;
+      b <= d;
+    end if;
+```
+
+```text
+lint_702 | Error | 13 | Signal 'b' is assigned by this process but not by its 'rst' branch
+```
+
+**Limitations** the reset has to be asynchronous, written as the branch the clock edge is the
+`elsif` of, because that is the only place a reset can be told from a clock enable. A process
+with a synchronous reset is not judged.
+
+---
+
+<a id="lint_703"></a>
+## lint_703 — Clock used on both edges
+
+**Detects** one clock driving registers on the rising edge in one place and the falling edge in
+another. Off by default.
+
+**Why it matters** it halves the time available between the two sets of registers. Usually it is
+a mistake about which signal was meant; sometimes it is the design, as in double data rate logic
+or an SPI interface that samples on one edge and shifts on the other.
+
+**Evidence** the edge each clocked process is triggered on.
+
+**Context** none. **Severity** error. **Fix** none. **Off by default.**
+
+```text
+lint_703 | Error | 195 | Clock 'm2s.sck' is used on both edges in this architecture
+```
+
+**Limitations** an edge inside a `wait` is a process suspending, not a register, and is not
+counted: a testbench that waits on one edge and drives on the other is ordinary. The whole name
+is compared, so `m2s.sck` and `m2s.cs_n` are two clocks rather than one.
 
 ---
 

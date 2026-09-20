@@ -32,13 +32,28 @@ fn words(node: &SyntaxNode) -> Vec<String> {
         .collect()
 }
 
+/// The name inside `rising_edge( ... )`, whole.
+///
+/// `tokens[at]` is the call. Reading only the token after the parenthesis truncates a selected
+/// name, so `rising_edge(m2s.cs_n)` and `falling_edge(m2s.sck)` both read as `m2s` and look
+/// like one clock used on two edges. They are two signals of one record.
+fn clock_in_call(tokens: &[String], at: usize) -> Option<String> {
+    let mut name = String::new();
+    for token in tokens.get(at + 2..)? {
+        if token == ")" {
+            break;
+        }
+        name.push_str(token);
+    }
+    (!name.is_empty()).then_some(name)
+}
+
 /// The clock a process is triggered on, if it is a register.
 fn clock_of(process: &SyntaxNode) -> Option<String> {
     let tokens = words(process);
     for (at, token) in tokens.iter().enumerate() {
         if token == "rising_edge" || token == "falling_edge" {
-            // `rising_edge ( clk )`
-            return tokens.get(at + 2).cloned();
+            return clock_in_call(&tokens, at);
         }
         // `clk'event`, however the lexer splits the tick.
         if token == "'event" {
@@ -159,17 +174,97 @@ pub fn check(parsed: &Parsed, file: &Path, synchronizers: &[String]) -> Vec<Find
             }
         }
     }
+    mixed_edges(parsed, file, &mut findings);
     findings.sort_by_key(|f| (f.line, f.column));
     findings.dedup_by(|a, b| a.line == b.line && a.message == b.message);
     findings
 }
 
+/// Report a clock that is used on both edges.
+///
+/// One clock driving registers on the rising edge in one process and the falling edge in
+/// another halves the time available between them, and is usually a mistake about which signal
+/// was meant. It is legal, and double data rate logic does it deliberately, so the rule states
+/// the fact and leaves the judgement.
+fn mixed_edges(parsed: &Parsed, file: &Path, findings: &mut Vec<Finding>) {
+    for architecture in find(parsed.root(), NodeKind::ArchitectureBody) {
+        // Each clock, and where it is used on each edge.
+        let mut edges: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
+        for process in find(&architecture, NodeKind::ProcessStatement) {
+            // An edge inside a `wait` is a process suspending until something happens, not a
+            // register clocked on that edge. A testbench waiting on one edge and driving on the
+            // other is ordinary, and reading it as mixed-edge logic reported 21 sound
+            // testbenches across the corpora. The test has to be structural: `wait until
+            // Out_Valid = '1' and rising_edge(Out_Clk)` puts three tokens between the two.
+            let waits: Vec<(usize, usize)> = find(&process, NodeKind::WaitStatement)
+                .iter()
+                .filter_map(|statement| {
+                    let inside = all_tokens(statement);
+                    Some((inside.first()?.text_offset(), inside.last()?.text_offset()))
+                })
+                .collect();
+            let tokens = all_tokens(&process);
+            for (at, token) in tokens.iter().enumerate() {
+                let edge = lower(token);
+                if edge != "rising_edge" && edge != "falling_edge" {
+                    continue;
+                }
+                let offset = token.text_offset();
+                if waits
+                    .iter()
+                    .any(|(from, to)| offset >= *from && offset <= *to)
+                {
+                    continue;
+                }
+                let words: Vec<String> = tokens.iter().map(lower).collect();
+                let Some(clock) = clock_in_call(&words, at) else {
+                    continue;
+                };
+                edges
+                    .entry(clock)
+                    .or_default()
+                    .entry(edge)
+                    .or_insert_with(|| token.text_offset());
+            }
+        }
+        for (clock, used) in edges {
+            if used.len() < 2 {
+                continue;
+            }
+            // Report at the second of the two, which is the one that disagrees with the first.
+            let Some(offset) = used.values().max().copied() else {
+                continue;
+            };
+            let (line, column) = parsed.line_col(offset);
+            findings.push(Finding {
+                file: file.to_path_buf(),
+                rule: "lint_703",
+                line,
+                column,
+                message: format!(
+                    "Clock \'{clock}\' is used on both edges in this architecture, which leaves \
+                     half a cycle between registers on one edge and those on the other"
+                ),
+                related: Vec::new(),
+            });
+        }
+    }
+}
+
 /// The rules this module reports, for `--list_rules`.
-pub const RULES: &[super::Rule] = &[super::Rule {
-    id: "lint_700",
-    description: "A signal registered on one clock is used in logic on another, without a synchroniser.",
-    certainty: super::Certainty::Experimental,
-}];
+pub const RULES: &[super::Rule] = &[
+    super::Rule {
+        id: "lint_703",
+        description: "A clock used on both its rising and its falling edge.",
+        certainty: super::Certainty::Advisory,
+    },
+    super::Rule {
+        id: "lint_700",
+        description: "A signal registered on one clock is used in logic on another, without a \
+                      synchroniser.",
+        certainty: super::Certainty::Experimental,
+    },
+];
 
 #[cfg(test)]
 mod tests {
@@ -263,5 +358,60 @@ mod tests {
             1,
             "without the configuration it is still a crossing"
         );
+    }
+}
+
+#[cfg(test)]
+mod edge_tests {
+    use super::*;
+
+    fn check_source(source: &str) -> Vec<String> {
+        let parsed = Parsed::new(source.as_bytes().to_vec());
+        assert!(parsed.syntax_errors().is_empty(), "test source must parse");
+        check(&parsed, Path::new("dut.vhd"), &[])
+            .into_iter()
+            .filter(|f| f.rule == "lint_703")
+            .map(|f| f.message)
+            .collect()
+    }
+
+    /// Two clocked processes, the second triggered on `edge`.
+    fn architecture(edge: &str) -> String {
+        format!(
+            "entity dut is\n  port (clk : in bit; d : in bit);\nend entity dut;\n\n\
+             architecture rtl of dut is\n  signal a, b : bit;\nbegin\n  \
+             p_a : process (clk) is\n  begin\n    if rising_edge(clk) then\n      a <= d;\n    \
+             end if;\n  end process p_a;\n\n  p_b : process (clk) is\n  begin\n    \
+             if {edge}(clk) then\n      b <= d;\n    end if;\n  end process p_b;\n\
+             end architecture rtl;\n"
+        )
+    }
+
+    #[test]
+    fn one_clock_on_both_edges() {
+        let found = check_source(&architecture("falling_edge"));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("'clk' is used on both edges"),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn one_edge_throughout_is_silent() {
+        let found = check_source(&architecture("rising_edge"));
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    #[test]
+    fn two_clocks_on_an_edge_each_are_not_a_mixed_clock() {
+        let source = "entity dut is\n  port (clk_a : in bit; clk_b : in bit; d : in bit);\n\
+                      end entity dut;\n\narchitecture rtl of dut is\n  signal a, b : bit;\n\
+                      begin\n  p_a : process (clk_a) is\n  begin\n    \
+                      if rising_edge(clk_a) then\n      a <= d;\n    end if;\n  \
+                      end process p_a;\n\n  p_b : process (clk_b) is\n  begin\n    \
+                      if falling_edge(clk_b) then\n      b <= d;\n    end if;\n  \
+                      end process p_b;\nend architecture rtl;\n";
+        assert!(check_source(source).is_empty());
     }
 }

@@ -34,13 +34,27 @@ struct Document {
     version: i32,
 }
 
+/// One project's analyser, and the library map it was built from.
+struct Analysed {
+    analyser: analysis::lint::Analyser,
+    /// What the map said when the project was built, so a map that has been edited since is
+    /// noticed rather than believed.
+    map: Option<(PathBuf, std::time::SystemTime)>,
+}
+
 pub(crate) struct Backend {
     client: Client,
     documents: Arc<RwLock<HashMap<Uri, Document>>>,
-    /// The analysed project, kept between edits. Building it parses every file the library map
-    /// names plus the embedded `ieee` and `std`, which is most of what an analysis costs and is
-    /// the same work every time; only the edited buffer changes.
-    analyser: Arc<tokio::sync::Mutex<Option<analysis::lint::Analyser>>>,
+    /// The analysed projects, kept between edits and keyed by the library map they belong to.
+    /// Building one parses every file the map names plus the embedded `ieee` and `std`, which is
+    /// most of what an analysis costs and is the same work every time; only the edited buffer
+    /// changes.
+    ///
+    /// Keyed, not single: one server is asked about files from every project the editor has open,
+    /// and answering for one project out of another's symbol table is worse than answering
+    /// slowly. The key is the library map that governs the file, or `None` for a file with no
+    /// map at all.
+    analysers: Arc<tokio::sync::Mutex<HashMap<Option<PathBuf>, Analysed>>>,
 }
 
 /// The configuration that applies to a file, found the way the command line finds it: the
@@ -125,12 +139,12 @@ impl Backend {
         let path = path_of(&uri);
         // One analysis at a time: the project is shared, and two edits analysing it at once
         // would each see the other's buffer half applied.
-        let analyser = Arc::clone(&self.analyser);
+        let analysers = Arc::clone(&self.analysers);
         let diagnostics = tokio::task::spawn_blocking({
             let path = path.clone();
             let text = text.clone();
             move || {
-                let mut held = analyser.blocking_lock();
+                let mut held = analysers.blocking_lock();
                 diagnose(&path, &text, &mut held)
             }
         })
@@ -162,7 +176,7 @@ impl Backend {
 fn diagnose(
     path: &Path,
     text: &str,
-    analyser: &mut Option<analysis::lint::Analyser>,
+    analysers: &mut HashMap<Option<PathBuf>, Analysed>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     // A configuration that does not load stops everything: every rule below, and the severity of
@@ -229,16 +243,45 @@ fn diagnose(
         path.to_path_buf(),
         text.as_bytes().to_vec(),
     )];
+    // Which project this file belongs to, and what its map said a moment ago.
+    let map = path
+        .parent()
+        .and_then(analysis::lint::project_config_for)
+        .map(|at| {
+            let stamp = std::fs::metadata(&at)
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            (at, stamp)
+        });
+    let key = map.as_ref().map(|(at, _)| at.clone());
+    // A map that has been edited since the project was built describes a different project.
+    if analysers
+        .get(&key)
+        .is_some_and(|held| held.map.as_ref().map(|(_, was)| *was) != map.as_ref().map(|(_, m)| *m))
+    {
+        analysers.remove(&key);
+    }
+
     let mut project_error = None;
-    if analyser.is_none() {
-        match analysis::lint::Analyser::new(&sources) {
-            Ok(built) => *analyser = Some(built),
+    if !analysers.contains_key(&key) {
+        match analysis::lint::Analyser::for_project(&sources, key.as_deref()) {
+            Ok(analyser) => {
+                analysers.insert(
+                    key.clone(),
+                    Analysed {
+                        analyser,
+                        map: map.clone(),
+                    },
+                );
+            }
             // Not silence: an unreadable `vhdl_ls.toml` switches off most of the lint layer, and
             // a report that is quietly missing 53 rules looks exactly like a clean one.
             Err(message) => project_error = Some(message),
         }
     }
-    let resolved = analyser.as_mut().map(|analyser| analyser.analyse(&sources));
+    let resolved = analysers
+        .get_mut(&key)
+        .map(|held| held.analyser.analyse(&sources));
     let front_end = match resolved {
         Some(analysis) if analysis.mapped => analysis.findings,
         // Without a library map most rules cannot run; the few that can are still worth having.
@@ -613,7 +656,7 @@ pub(crate) fn serve() -> std::process::ExitCode {
         let (service, socket) = LspService::new(|client| Backend {
             client,
             documents: Arc::new(RwLock::new(HashMap::new())),
-            analyser: Arc::new(tokio::sync::Mutex::new(None)),
+            analysers: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         });
         Server::new(tokio::io::stdin(), tokio::io::stdout(), socket)
             .serve(service)

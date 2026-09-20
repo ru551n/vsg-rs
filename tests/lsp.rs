@@ -850,3 +850,104 @@ fn a_finding_after_a_tab_points_at_the_right_character() {
         );
     }
 }
+
+/// A project under `dir` whose library map is `library`, holding one file with an unused signal.
+fn project_named(dir: &std::path::Path, library: &str) -> PathBuf {
+    std::fs::create_dir_all(dir.join("src")).expect("mkdir");
+    std::fs::write(
+        dir.join("vhdl_ls.toml"),
+        format!("[libraries]\n{library}.files = [\"src/*.vhd\"]\n"),
+    )
+    .expect("write config");
+    let file = dir.join("src/e.vhd");
+    std::fs::write(
+        &file,
+        "entity e is\nend entity e;\n\narchitecture rtl of e is\n\n  signal spare : bit;\n\n\
+         begin\n\nend architecture rtl;\n",
+    )
+    .expect("write source");
+    file
+}
+
+/// The rule codes published for `uri` after opening it with `text`.
+fn codes_for(session: &mut Session, uri: &str, text: &str) -> Vec<String> {
+    let got = session.talk_while(&[did_open(uri, text)], |seen| {
+        seen.iter()
+            .any(|m| m["method"] == "textDocument/publishDiagnostics" && m["params"]["uri"] == uri)
+    });
+    got.iter()
+        .filter(|m| m["method"] == "textDocument/publishDiagnostics" && m["params"]["uri"] == uri)
+        .filter_map(|m| m["params"]["diagnostics"].as_array())
+        .flatten()
+        .filter_map(|d| d["code"].as_str().map(str::to_owned))
+        .collect()
+}
+
+#[test]
+fn two_projects_in_one_server_are_analysed_as_two_projects() {
+    // One analyser for the whole server meant the second project was resolved against the
+    // first one's library map. An editor with two folders open is the ordinary case.
+    let one = tempfile::tempdir().expect("tempdir");
+    let two = tempfile::tempdir().expect("tempdir");
+    let first = project_named(one.path(), "alpha");
+    let second = project_named(two.path(), "beta");
+
+    let source = std::fs::read_to_string(&first).expect("read");
+    let mut session = Session::start_in(one.path());
+    let a = codes_for(&mut session, &file_uri(&first), &source);
+    let b = codes_for(&mut session, &file_uri(&second), &source);
+    // lint_004 needs the file's own library map. Both files have one, so both get it.
+    assert!(a.contains(&"lint_004".to_owned()), "first project: {a:?}");
+    assert!(
+        b.contains(&"lint_004".to_owned()),
+        "the second project has its own map and is not answered from the first: {b:?}"
+    );
+}
+
+#[test]
+fn editing_the_library_map_rebuilds_the_project() {
+    // The project used to be built once and kept for the life of the server, so a library map
+    // that changed was believed until someone restarted the editor.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let file = project_named(dir.path(), "mylib");
+    let source = std::fs::read_to_string(&file).expect("read");
+    // Start with a map that covers nothing: the file is in no library, so the rules that
+    // resolve names across files cannot run.
+    std::fs::write(
+        dir.path().join("vhdl_ls.toml"),
+        "[libraries]\nmylib.files = [\"elsewhere/*.vhd\"]\n",
+    )
+    .expect("rewrite config");
+    // Both files exist on disk before anything is analysed, so the only thing that changes
+    // between the two answers is the map.
+    let other = dir.path().join("src/other.vhd");
+    std::fs::write(
+        &other,
+        source
+            .replace("entity e", "entity o")
+            .replace("of e", "of o"),
+    )
+    .expect("write source");
+
+    let mut session = Session::start_in(dir.path());
+    let before = codes_for(&mut session, &file_uri(&file), &source);
+    assert!(
+        !before.contains(&"lint_004".to_owned()),
+        "nothing is in a library yet: {before:?}"
+    );
+
+    std::fs::write(
+        dir.path().join("vhdl_ls.toml"),
+        "[libraries]\nmylib.files = [\"src/*.vhd\"]\n",
+    )
+    .expect("rewrite config");
+    let after = codes_for(
+        &mut session,
+        &file_uri(&other),
+        &std::fs::read_to_string(&other).expect("read"),
+    );
+    assert!(
+        after.contains(&"lint_004".to_owned()),
+        "the rewritten map is read, not the one from start-up: {after:?}"
+    );
+}

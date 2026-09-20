@@ -458,6 +458,18 @@ fn project_config() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
+/// The library map governing `dir`: the nearest `vhdl_ls.toml` in it or an ancestor.
+///
+/// The same search the style layer already does for `vsg-rs.yaml`, so a caller that is not
+/// standing in the project -- a language server, started once for several of them -- finds the
+/// map belonging to the file it was asked about rather than the one next to wherever it started.
+#[must_use]
+pub fn project_config_for(dir: &Path) -> Option<PathBuf> {
+    dir.ancestors()
+        .map(|at| at.join("vhdl_ls.toml"))
+        .find(|candidate| candidate.is_file())
+}
+
 /// Which libraries each file belongs to, from the project's `vhdl_ls.toml`. Empty when the
 /// project has no library map, which is also when `vsg_rs: testbench_libraries` cannot be used.
 pub fn libraries_of_files() -> BTreeMap<PathBuf, Vec<String>> {
@@ -530,13 +542,26 @@ impl Analyser {
     /// # Errors
     /// If the configuration names something that cannot be read.
     pub fn new(sources: &[Source]) -> Result<Analyser, String> {
+        Analyser::for_project(sources, project_config().as_deref())
+    }
+
+    /// The same, against a named library map rather than whichever one the working directory
+    /// happens to sit next to.
+    ///
+    /// The command line runs in the project it is checking, so the working directory answers for
+    /// it. A language server does not: it is started once, anywhere, and asked about files from
+    /// whichever projects the editor has open.
+    ///
+    /// # Errors
+    /// If the configuration names something that cannot be read.
+    pub fn for_project(sources: &[Source], config: Option<&Path>) -> Result<Analyser, String> {
         let files: Vec<PathBuf> = sources.iter().map(|s| s.path.clone()).collect();
-        let config = configuration(&files, project_config().as_deref())?;
-        let mut project = Project::from_config(config, &mut Quiet);
+        let built = configuration(&files, config)?;
+        let mut project = Project::from_config(built, &mut Quiet);
         project.enable_all_linters();
         Ok(Analyser {
             project,
-            mapped: project_config().is_some(),
+            mapped: config.is_some(),
         })
     }
 

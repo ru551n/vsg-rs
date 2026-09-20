@@ -1,6 +1,6 @@
 # Native rules in detail
 
-The fourteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
+The fifteen rules vsg-rs implements itself, as opposed to the resolved-semantic rules it gets from the
 VHDL front end. Each entry says what evidence the analyser used, because that is what decides how
 far to trust a finding.
 
@@ -448,6 +448,45 @@ lint_750 | Error | 9 | Component 'dut' does not match entity 'dut': it does not 
 type marks across files. Entities are matched by bare name, so two entities of the same name in
 different libraries are treated as one; this is the same assumption `lint_730` makes. A component
 whose entity is not in the file set is not reported at all, rather than guessed at.
+
+---
+
+<a id="lint_751"></a>
+## lint_751 — Configuration names an architecture that is not declared
+
+**Detects** a configuration whose `for` clause, or whose `use entity` binding, names an
+architecture that no file declares.
+
+**Why it matters** a configuration is the one place a design names an architecture in writing,
+and nothing checks the name until the design is elaborated. A simulator rejects it — but only
+once someone runs one, which may be a build and a wait away. This is the difference between a
+failed lint job and a failed build.
+
+**Evidence** the architectures declared for each entity, gathered over every file of the run,
+against the names the configuration uses.
+
+**Context** the entity must be among the files being checked. **Severity** error. **Fix** none.
+
+```vhdl
+configuration cfg of tb is
+  for sim
+    for i_dff : dff
+      use entity work.dff(no_such_arch);
+    end for;
+  end for;
+end configuration cfg;
+```
+
+```text
+lint_751 | Error | 17 | Configuration binds to architecture 'no_such_arch' of 'dff', which
+                        is not declared
+```
+
+**Limitations** checks architecture names only. It does not check that the instance label exists
+in the architecture, or that the label instantiates the component named beside it — those need
+the instance labels of every architecture, which the elaboration pass does not collect. An
+entity the run cannot see is left alone entirely: from inside one run, "not here" and "not
+anywhere" look the same.
 
 ---
 

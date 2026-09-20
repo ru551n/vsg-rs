@@ -1262,35 +1262,14 @@ fn fix_options(args: &Args) -> Result<FixOptions, String> {
 #[derive(serde::Serialize, serde::Deserialize, Default)]
 struct Index {
     project: Option<Project>,
-    entities: Option<vsg_rs::analysis::elaborate::Entities>,
+    design: Option<vsg_rs::analysis::elaborate::Design>,
 }
 
 fn index_of(files: &[PathBuf], style: bool, lint: bool) -> Index {
     Index {
         project: style.then(|| project(files)),
-        entities: lint.then(|| vsg_rs::analysis::elaborate::entities(files)),
+        design: lint.then(|| vsg_rs::analysis::elaborate::design(files)),
     }
-}
-
-/// Merge two port tables the way `elaborate::entities` does within one: the entity's own ports
-/// win over a component declaration repeating them, and otherwise the first definition wins.
-fn merge_entities(
-    mut into: vsg_rs::analysis::elaborate::Entities,
-    from: vsg_rs::analysis::elaborate::Entities,
-) -> vsg_rs::analysis::elaborate::Entities {
-    for (name, ports) in from {
-        match into.entry(name) {
-            std::collections::btree_map::Entry::Vacant(slot) => {
-                slot.insert(ports);
-            }
-            std::collections::btree_map::Entry::Occupied(mut slot) => {
-                if ports.from_entity && !slot.get().from_entity {
-                    slot.insert(ports);
-                }
-            }
-        }
-    }
-    into
 }
 
 fn project(files: &[PathBuf]) -> Project {
@@ -1490,7 +1469,7 @@ struct PerFile {
 fn lint_files(
     sources: &[vsg_rs::analysis::lint::Source],
     indices: &[usize],
-    entities: &vsg_rs::analysis::elaborate::Entities,
+    design: &vsg_rs::analysis::elaborate::Design,
     lint_cfg: &Config,
     kind_sources: &vsg_rs::analysis::testbench::Kinds,
 ) -> Result<Vec<PerFile>, String> {
@@ -1530,10 +1509,15 @@ fn lint_files(
             }
             let reason = vsg_rs::analysis::testbench::classify(&parsed, file, kind_sources);
             let (cfg, naming) = if reason.is_some() { &testbench } else { &rtl };
-            let wiring = vsg_rs::analysis::elaborate::undriven(&parsed, file, entities)
+            let wiring = vsg_rs::analysis::elaborate::undriven(&parsed, file, &design.entities)
                 .into_iter()
                 .chain(vsg_rs::analysis::elaborate::interfaces(
-                    &parsed, file, entities,
+                    &parsed,
+                    file,
+                    &design.entities,
+                ))
+                .chain(vsg_rs::analysis::elaborate::configurations(
+                    &parsed, file, design,
                 ));
             let found = vsg_rs::analysis::per_file(&parsed, file, naming, &cfg.synchronizers)
                 .into_iter()
@@ -1583,7 +1567,7 @@ fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOpti
     #[derive(serde::Deserialize)]
     struct LintRequest {
         indices: Vec<usize>,
-        entities: vsg_rs::analysis::elaborate::Entities,
+        design: vsg_rs::analysis::elaborate::Design,
         /// The configuration files the lint layer reads, already in merge order, so a worker
         /// resolves exactly the configuration the parent would have.
         configuration: Vec<PathBuf>,
@@ -1621,7 +1605,7 @@ fn run_worker(files: &[PathBuf], cfg: &Config, args: &Args, mut options: FixOpti
         match lint_files(
             &sources,
             &lint.indices,
-            &lint.entities,
+            &lint.design,
             &lint_cfg,
             &kind_sources,
         ) {
@@ -1865,7 +1849,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
     // Several files are read together: the style layer checks uses of package declarations and
     // entity interfaces across files, and the lint layer needs every entity's port modes. Both
     // come from one parse per file, in the workers, so neither costs a pass of its own.
-    let mut entities = vsg_rs::analysis::elaborate::Entities::new();
+    let mut design = vsg_rs::analysis::elaborate::Design::default();
     if !args.stdin && files.len() > 1 {
         let start = std::time::Instant::now();
         let request = |chunk: &[usize]| serde_json::json!({ "index": chunk });
@@ -1877,8 +1861,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                         (Some(a), Some(b)) => Some(Project::merge(a, b)),
                         (a, b) => a.or(b),
                     },
-                    entities: match (acc.entities, part.entities) {
-                        (Some(a), Some(b)) => Some(merge_entities(a, b)),
+                    design: match (acc.design, part.design) {
+                        (Some(a), Some(b)) => Some(a.merge(b)),
                         (a, b) => a.or(b),
                     },
                 })
@@ -1887,7 +1871,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         if let Some(project) = index.project {
             options.project = Some(Arc::new(project));
         }
-        entities = index.entities.unwrap_or_default();
+        design = index.design.unwrap_or_default();
         if args.debug {
             eprintln!("DEBUG: project index built in {:.2?}", start.elapsed());
         }
@@ -2002,8 +1986,8 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         // Design checks on our own tree: they need no resolution, so they run per file and
         // survive a file the analyser cannot parse. The port table comes from the index round
         // above; a single input never has one, so it is built here.
-        if entities.is_empty() && !args.stdin {
-            entities = vsg_rs::analysis::elaborate::entities(&files);
+        if design.entities.is_empty() && !args.stdin {
+            design = vsg_rs::analysis::elaborate::design(&files);
         }
         // Why each file counts as a testbench, for `--debug`. Owned, because a worker sends it.
         let mut kinds: std::collections::BTreeMap<PathBuf, String> =
@@ -2035,7 +2019,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
             serde_json::json!({
                 "lint": {
                     "indices": chunk,
-                    "entities": &entities,
+                    "design": &design,
                     "configuration": &lint_paths,
                     "libraries": &of_file,
                 }
@@ -2056,7 +2040,7 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
         } else {
             // One process is enough, or a worker could not be started: do it here.
             let indices: Vec<usize> = (0..sources.len()).collect();
-            match lint_files(&sources, &indices, &entities, &lint_cfg, &kind_sources) {
+            match lint_files(&sources, &indices, &design, &lint_cfg, &kind_sources) {
                 Ok(per_file) => per_file,
                 Err(e) => {
                     eprintln!("ERROR: {e}");
@@ -2085,13 +2069,6 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                 let mapped = analysis.mapped;
                 let mut held_back = 0usize;
                 for f in analysis.findings {
-                    if !mapped && !vsg_rs::analysis::lint::needs_no_library_map(f.rule) {
-                        held_back += 1;
-                        continue;
-                    }
-                    let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == f.file) else {
-                        continue;
-                    };
                     // Picky by default: a lint rule is an error unless the configuration says
                     // otherwise, and disabling it in the configuration switches it off.
                     let file_cfg = lint_cfg.for_kind(if kinds.contains_key(&f.file) {
@@ -2100,9 +2077,18 @@ pub(crate) fn main(command_line: &[String]) -> ExitCode {
                         "rtl"
                     });
                     let settings = file_cfg.rule_by_id(f.rule);
+                    // Asked before the library map is: a rule nobody switched on was not held
+                    // back by anything, and counting it would overstate what a map would buy.
                     if settings.as_ref().is_some_and(|s| !s.enabled) {
                         continue;
                     }
+                    if !mapped && !vsg_rs::analysis::lint::needs_no_library_map(f.rule) {
+                        held_back += 1;
+                        continue;
+                    }
+                    let Some(r) = results.iter_mut().find(|r| Path::new(&r.name) == f.file) else {
+                        continue;
+                    };
                     r.violations.push(Diagnostic {
                         line: f.line,
                         column: f.column,

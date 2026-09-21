@@ -1010,3 +1010,136 @@ fn a_definite_error_reaches_the_editor_as_the_command_line_sees_it() {
         "{stuck:#?}"
     );
 }
+
+/// A waived finding does not reach the editor.
+///
+/// The command line stops counting a waived violation, so an editor that kept underlining it
+/// would be the one place still arguing about a decision the project has already made.
+#[test]
+fn a_waived_finding_is_not_published() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
+                  signal x : bit;\nbegin\n  p : process\n  begin\n    x <= '1';\n  \
+                  end process p;\nend architecture rtl;\n";
+    let file = dir.path().join("dut.vhd");
+    std::fs::write(&file, source).expect("write");
+
+    let reported = |published: &serde_json::Value| {
+        published["params"]["diagnostics"]
+            .as_array()
+            .expect("diagnostics")
+            .iter()
+            .any(|d| d["code"] == "lint_770")
+    };
+
+    // Without a waiver the process that can never suspend is reported.
+    let got = Session::start().talk(&[did_open(&file_uri(&file), source)], 1);
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .expect("diagnostics");
+    assert!(reported(published), "{published:#?}");
+
+    // With one beside the file, it is not.
+    std::fs::write(
+        dir.path().join("vsg-rs-waivers.yaml"),
+        "waivers:\n  - rule: lint_770\n    files: 'dut.vhd'\n    reason: deliberate\n",
+    )
+    .expect("write waivers");
+    let got = Session::start().talk(&[did_open(&file_uri(&file), source)], 1);
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .expect("diagnostics");
+    assert!(
+        !reported(published),
+        "the waiver was ignored: {published:#?}"
+    );
+}
+
+/// The editor is offered a waiver at three scopes, and executing one writes the entry.
+///
+/// The reason is not invented here: the action carries a command, the client asks a person, and
+/// only then is anything written. This checks both halves of that contract.
+#[test]
+fn a_finding_can_be_waived_from_the_editor() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source = "entity dut is\nend entity dut;\n\narchitecture rtl of dut is\n  \
+                  signal x : bit;\nbegin\n  p : process\n  begin\n    x <= '1';\n  \
+                  end process p;\nend architecture rtl;\n";
+    let file = dir.path().join("dut.vhd");
+    std::fs::write(&file, source).expect("write");
+    let uri = file_uri(&file);
+
+    let mut session = Session::start();
+    let got = session.talk(&[did_open(&uri, source)], 1);
+    let published = got
+        .iter()
+        .find(|m| m["method"] == "textDocument/publishDiagnostics")
+        .expect("diagnostics");
+    let stuck = published["params"]["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .find(|d| d["code"] == "lint_770")
+        .expect("the process that can never suspend")
+        .clone();
+
+    // The three scopes are offered on that finding.
+    let got = session.talk_while(
+        &[serde_json::json!({
+            "jsonrpc": "2.0", "id": 7, "method": "textDocument/codeAction",
+            "params": {
+                "textDocument": { "uri": uri },
+                "range": stuck["range"],
+                "context": { "diagnostics": [stuck] }
+            }
+        })],
+        |seen| seen.iter().any(|m| m["id"] == 7),
+    );
+    let actions = got
+        .iter()
+        .find(|m| m["id"] == 7)
+        .expect("a code action reply")["result"]
+        .as_array()
+        .expect("actions")
+        .clone();
+    let titles: Vec<&str> = actions.iter().filter_map(|a| a["title"].as_str()).collect();
+    for wanted in [
+        "Waive lint_770 on this line...",
+        "Waive lint_770 in this file...",
+        "Waive lint_770 everywhere...",
+    ] {
+        assert!(titles.contains(&wanted), "{titles:?}");
+    }
+    // The action asks the client to collect a reason rather than writing one itself.
+    let waiver = actions
+        .iter()
+        .find(|a| a["title"] == "Waive lint_770 on this line...")
+        .expect("the line action");
+    assert_eq!(waiver["command"]["command"], "vsg-rs.waiveWithReason");
+    assert!(waiver["edit"].is_null(), "an action wrote without a reason");
+
+    // Executing the server's command writes the entry, through an edit the editor applies.
+    let mut argument = waiver["command"]["arguments"][0].clone();
+    argument["reason"] = serde_json::json!("deliberate, it is a stimulus process");
+    let got = session.talk_while(
+        &[serde_json::json!({
+            "jsonrpc": "2.0", "id": 8, "method": "workspace/executeCommand",
+            "params": { "command": "vsg-rs.applyWaiver", "arguments": [argument] }
+        })],
+        |seen| seen.iter().any(|m| m["method"] == "workspace/applyEdit"),
+    );
+    let edit = got
+        .iter()
+        .find(|m| m["method"] == "workspace/applyEdit")
+        .expect("the server asked the editor to apply an edit");
+    let written = serde_json::to_string(&edit["params"]["edit"]).expect("json");
+    assert!(written.contains("rule: lint_770"), "{written}");
+    assert!(written.contains("dut.vhd"), "{written}");
+    assert!(
+        written.contains("reason: deliberate, it is a stimulus process"),
+        "{written}"
+    );
+    assert!(written.contains("vsg-rs-waivers.yaml"), "{written}");
+}

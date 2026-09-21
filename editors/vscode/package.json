@@ -73,6 +73,11 @@
           ],
           "default": "off",
           "description": "Log the traffic between the editor and the server to the vsg-rs output channel."
+        },
+        "vsg-rs.waiverFile": {
+          "type": "string",
+          "default": "vsg-rs-waivers.yaml",
+          "markdownDescription": "What a waiver file is called. The server looks for one beside the file being checked and in each directory above it, and creates one at the workspace root when the project has none. Pass the same file to the command line with `--waivers` so the editor and CI agree about what has been accepted."
         }
       }
     },
@@ -91,6 +96,12 @@
         "command": "vsg-rs.showVersion",
         "title": "Show Server Version",
         "category": "vsg-rs"
+      },
+      {
+        "command": "vsg-rs.waiveWithReason",
+        "title": "Waive a Finding...",
+        "category": "vsg-rs",
+        "enablement": "false"
       }
     ]
   },

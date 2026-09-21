@@ -136,7 +136,9 @@ vsg-rs mcp                        # an MCP server, for a coding agent
 The [language server](https://vsg-rs.readthedocs.io/en/latest/lsp/) is meant to run beside
 `vhdl_ls` rather than instead of it, and advertises only what vsg-rs is: it answers no
 completion, hover or definition request. A [VS Code extension](editors/vscode/README.md) ships
-it.
+it, and adds [editing actions](https://vsg-rs.readthedocs.io/en/latest/vscode-editing/) built on
+VHDL-LS, such as instantiating an entity and declaring a port map's signals. Those need VHDL-LS
+running; lint and format do not.
 
 The [MCP server](https://vsg-rs.readthedocs.io/en/latest/mcp/) gives a coding agent three tools,
 `lint`, `format` and `explain_rule`:

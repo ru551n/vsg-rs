@@ -14,7 +14,7 @@ vsg-rs --recursive src --waivers waivers.yaml          # from now on: only new v
 ```
 
 Fix before generating. Layout and style rules are almost all fixable, and a waiver file that
-accepts thousands of layout violations is both enormous and pointless — `--fix` removes them
+accepts thousands of layout violations is both enormous and pointless: `--fix` removes them
 for good. What is worth waiving is the rest: generated code, vendor sources, or a rule a team
 disagrees with in one directory.
 
@@ -43,10 +43,16 @@ passed together.
 
 ## Keeping waivers honest
 
-* `--generate_waivers` writes exact line numbers and `reason: TODO`. Replace the reasons — a
+* `--generate_waivers` writes exact line numbers and `reason: TODO`. Replace the reasons: a
   file full of `TODO` is a list of problems nobody has read, not a set of decisions.
 * Lines rot: when code moves, a line-scoped waiver stops matching and the violation comes back.
   That is the point. Delete `lines:` when the waiver is about the file rather than the line.
 * `--show_waived` lists what was waived, with its reason, so a review can see what the file is
   hiding. Without it a run only prints how many violations were waived.
 * A waiver never hides a syntax error or an internal error; those are not violations.
+
+## From the editor
+
+In an editor that runs the [language server](lsp.md), a finding offers to be waived on its line, in
+its file or everywhere, asks why, and writes the entry to `vsg-rs-waivers.yaml`. Pass that file to
+`--waivers` in CI and the editor and the command line agree about what has been accepted.

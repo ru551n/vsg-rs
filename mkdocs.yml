@@ -42,6 +42,7 @@ nav:
       - Folding coverage: line-folding-coverage.md
       - Format on save: editors.md
       - Language server: lsp.md
+      - Editing in VS Code: vscode-editing.md
       - MCP server: mcp.md
       - Claude Code plugin: claude-code.md
   - Static analysis:

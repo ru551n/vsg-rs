@@ -70,3 +70,11 @@ would have to be published under MPL-2.0, while vsg-rs code is unaffected.
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 |
 | yaml_serde | 0.10.7 | MIT OR Apache-2.0 |
 | zmij | 1.0.23 | MIT |
+
+## The VS Code extension's themes
+
+The two *Gruvbox VHDL* colour themes in `editors/vscode/themes` use the colour palette of
+[Gruvbox](https://github.com/morhetz/gruvbox), the open-source theme by morhetz (MIT/X11), which
+many editors ship. Only its colour values are used: no theme source, grammar or code is copied
+from it or from any other project, and the themes are otherwise vsg-rs's own, under
+MIT OR Apache-2.0.

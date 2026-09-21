@@ -14,6 +14,7 @@ import { promisify } from "node:util";
 import { execFile } from "node:child_process";
 
 import { ExtensionContext, OutputChannel, commands, window, workspace } from "vscode";
+import { registerEditingFeatures } from "./editing";
 import {
   ExecuteCommandRequest,
   LanguageClient,
@@ -207,6 +208,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
       }
     }),
   );
+  // The editing half: commands and providers built on whatever VHDL language server is
+  // running. It registers its own subscriptions and does not need the vsg-rs server.
+  registerEditingFeatures(context);
   await start(context);
 }
 

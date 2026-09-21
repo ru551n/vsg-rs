@@ -6,3 +6,4 @@ out/**/*.map
 node_modules/typescript/**
 node_modules/@types/**
 scripts/**
+test/**

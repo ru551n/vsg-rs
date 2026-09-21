@@ -1,7 +1,7 @@
 {
   "name": "vsg-rs",
   "displayName": "vsg-rs: VHDL formatter and static analysis",
-  "description": "Formatting, diagnostics and quick fixes for VHDL, from the vsg-rs language server. Complements a VHDL language server such as VHDL-LS.",
+  "description": "VHDL for VS Code: formatting and static analysis from the vsg-rs language server, plus syntax highlighting and editing actions such as instantiating an entity, declaring port map signals and generating a state machine.",
   "version": "0.11.1",
   "publisher": "ru551n",
   "license": "MIT OR Apache-2.0",
@@ -11,21 +11,26 @@
     "directory": "editors/vscode"
   },
   "categories": [
+    "Programming Languages",
     "Formatters",
     "Linters",
-    "Programming Languages"
+    "Themes"
   ],
   "keywords": [
     "vhdl",
+    "fpga",
     "formatter",
     "linter",
-    "vsg"
+    "vsg",
+    "instantiate",
+    "fsm"
   ],
   "engines": {
     "vscode": "^1.75.0"
   },
   "activationEvents": [
-    "onLanguage:vhdl"
+    "onLanguage:vhdl",
+    "onView:vsg-rs.hierarchy"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -37,8 +42,11 @@
         ],
         "extensions": [
           ".vhd",
-          ".vhdl"
-        ]
+          ".vhdl",
+          ".vho",
+          ".vht"
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "configuration": {
@@ -102,13 +110,126 @@
         "title": "Waive a Finding...",
         "category": "vsg-rs",
         "enablement": "false"
+      },
+      {
+        "command": "vsg-rs.instantiateEntity",
+        "title": "VHDL: Instantiate Entity",
+        "category": "VHDL"
+      },
+      {
+        "command": "vsg-rs.declareSignals",
+        "title": "VHDL: Declare Signals for Port Map",
+        "category": "VHDL"
+      },
+      {
+        "command": "vsg-rs.fsmFromEnum",
+        "title": "VHDL: Create State Machine from Enum Type",
+        "category": "VHDL"
+      },
+      {
+        "command": "vsg-rs.addUseClause",
+        "title": "VHDL: Add Library and Use Clause for Symbol",
+        "category": "VHDL"
+      },
+      {
+        "command": "vsg-rs.componentDeclaration",
+        "title": "VHDL: Declare Entity as Component",
+        "category": "VHDL"
+      },
+      {
+        "command": "vsg-rs.removeUnusedUseClauses",
+        "title": "VHDL: Remove Unused Use Clauses",
+        "category": "VHDL"
+      },
+      {
+        "command": "vsg-rs.refreshHierarchy",
+        "title": "Refresh",
+        "category": "VHDL",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vsg-rs.extractObject",
+        "title": "VHDL: Extract Selection to Constant or Signal",
+        "category": "VHDL"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "editorLangId == vhdl",
+          "command": "vsg-rs.instantiateEntity",
+          "group": "1_modification@1"
+        },
+        {
+          "when": "editorLangId == vhdl",
+          "command": "vsg-rs.declareSignals",
+          "group": "1_modification@2"
+        },
+        {
+          "when": "editorLangId == vhdl",
+          "command": "vsg-rs.fsmFromEnum",
+          "group": "1_modification@3"
+        },
+        {
+          "when": "editorLangId == vhdl",
+          "command": "vsg-rs.addUseClause",
+          "group": "1_modification@4"
+        },
+        {
+          "when": "editorLangId == vhdl",
+          "command": "vsg-rs.componentDeclaration",
+          "group": "1_modification@5"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "vsg-rs.refreshHierarchy",
+          "when": "view == vsg-rs.hierarchy",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "vsg-rs.refreshHierarchy",
+          "when": "false"
+        }
+      ]
+    },
+    "grammars": [
+      {
+        "language": "vhdl",
+        "scopeName": "source.vhdl",
+        "path": "./syntaxes/vhdl.tmLanguage.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "Gruvbox VHDL Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gruvbox-vhdl-dark.json"
+      },
+      {
+        "label": "Gruvbox VHDL Light",
+        "uiTheme": "vs",
+        "path": "./themes/gruvbox-vhdl-light.json"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "vsg-rs.hierarchy",
+          "name": "VHDL Design",
+          "when": "vsg-rs.hasVhdl"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "test": "node --experimental-strip-types src/generate.test.ts && node scripts/check-grammar.mjs",
+    "smoke": "node test/smoke/run.mjs"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
@@ -116,7 +237,9 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^3.2.0",
     "typescript": "^5.7.0",
-    "@vscode/vsce": "^3.2.0"
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   }
 }

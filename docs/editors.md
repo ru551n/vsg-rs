@@ -2,10 +2,11 @@
 
 There are two ways to use vsg-rs from an editor.
 
-**As a language server.** `vsg-rs lsp` gives diagnostics, quick fixes and formatting — see
+**As a language server.** `vsg-rs lsp` gives diagnostics, quick fixes and formatting; see
 [language server](lsp.md). On VS Code the
-[extension](https://github.com/ru551n/vsg-rs/tree/main/editors/vscode) launches it for you;
-every other editor launches `vsg-rs lsp` directly.
+[extension](https://github.com/ru551n/vsg-rs/tree/main/editors/vscode) launches it for you, and
+adds [editing actions](vscode-editing.md) that work through VHDL-LS. Every other editor launches
+`vsg-rs lsp` directly.
 
 **As a formatter only**, described below, for editors that just pipe a buffer through a command.
 

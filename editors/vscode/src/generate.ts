@@ -216,15 +216,27 @@ export function readActuals(portMapText: string, formals: string[]): Map<string,
 
 export interface FsmOptions {
   indent?: string;
+  /** Indentation of the process, when it is not written beside the declaration. */
+  processIndent?: string;
   signal?: string;
   clock?: string;
   reset?: string;
   resetStyle?: "sync" | "async" | "none";
 }
 
-/** Registered state machine over an existing enum type. */
-export function renderFsm(e: EnumType, opts: FsmOptions = {}): string {
+/**
+ * A registered state machine over an existing enum type, in the two places VHDL wants it.
+ *
+ * The state signal is a declaration and the process is a concurrent statement, and an
+ * architecture keeps them either side of `begin`. Written together, as one block, the process
+ * sits among declarations, which is an error.
+ */
+export function renderFsmParts(
+  e: EnumType,
+  opts: FsmOptions = {},
+): { declaration: string; process: string } {
   const i = opts.indent ?? "  ";
+  const p = opts.processIndent ?? i;
   const sig = opts.signal ?? "state";
   const clk = opts.clock ?? "clk";
   const rst = opts.reset ?? "reset";
@@ -232,43 +244,50 @@ export function renderFsm(e: EnumType, opts: FsmOptions = {}): string {
   const idle = e.literals[0];
   const body: string[] = [];
 
-  body.push(`${i}signal ${sig} : ${e.name} := ${idle};`);
-  body.push("");
   body.push(
-    `${i}p_${sig} : process (${clk}${style === "async" ? `, ${rst}` : ""}) is`,
+    `${p}p_${sig} : process (${clk}${style === "async" ? `, ${rst}` : ""}) is`,
   );
-  body.push(`${i}begin`);
+  body.push(`${p}begin`);
 
   const inner: string[] = [];
-  inner.push(`${i}    case ${sig} is`);
+  inner.push(`${p}    case ${sig} is`);
   for (const lit of e.literals) {
-    inner.push(`${i}      when ${lit} =>`);
-    inner.push(`${i}        null;`);
+    inner.push(`${p}      when ${lit} =>`);
+    inner.push(`${p}        null;`);
     inner.push("");
   }
   inner.pop();
-  inner.push(`${i}    end case;`);
+  inner.push(`${p}    end case;`);
 
   if (style === "async") {
-    body.push(`${i}  if ${rst} then`);
-    body.push(`${i}    ${sig} <= ${idle};`);
-    body.push(`${i}  elsif rising_edge(${clk}) then`);
+    body.push(`${p}  if ${rst} then`);
+    body.push(`${p}    ${sig} <= ${idle};`);
+    body.push(`${p}  elsif rising_edge(${clk}) then`);
     body.push(...inner.map((l) => l.replace(/^ {2}/, "")));
-    body.push(`${i}  end if;`);
+    body.push(`${p}  end if;`);
   } else {
-    body.push(`${i}  if rising_edge(${clk}) then`);
+    body.push(`${p}  if rising_edge(${clk}) then`);
     body.push(...inner.map((l) => l.replace(/^ {2}/, "")));
     if (style === "sync") {
       body.push("");
-      body.push(`${i}    if ${rst} then`);
-      body.push(`${i}      ${sig} <= ${idle};`);
-      body.push(`${i}    end if;`);
+      body.push(`${p}    if ${rst} then`);
+      body.push(`${p}      ${sig} <= ${idle};`);
+      body.push(`${p}    end if;`);
     }
-    body.push(`${i}  end if;`);
+    body.push(`${p}  end if;`);
   }
 
-  body.push(`${i}end process;`);
-  return body.join("\n");
+  body.push(`${p}end process;`);
+  return {
+    declaration: `${i}signal ${sig} : ${e.name} := ${idle};`,
+    process: body.join("\n"),
+  };
+}
+
+/** The same, as one block, for a caller that places it itself. */
+export function renderFsm(e: EnumType, opts: FsmOptions = {}): string {
+  const { declaration, process } = renderFsmParts(e, opts);
+  return `${declaration}\n\n${process}`;
 }
 
 /** Libraries that are visible without a library clause. */

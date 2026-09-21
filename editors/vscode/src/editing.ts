@@ -11,7 +11,7 @@ import {
   parseEnumHover,
   readAssociations,
   renderComponent,
-  renderFsm,
+  renderFsmParts,
   renderInstance,
   renderMissingAssociations,
   renderSignals,
@@ -639,19 +639,66 @@ async function fsmFromEnum(): Promise<void> {
   });
   if (!signal) return;
 
+  // The signal is a declaration and the process a concurrent statement, so they go either side
+  // of the architecture's `begin`. Written as one block after the type, the process ended up
+  // among the declarations, which the server rejects.
   const line = doc.lineAt(editor.selection.active.line);
-  await editor.edit((b) =>
-    b.insert(
-      new vscode.Position(line.lineNumber + 1, 0),
-      renderFsm(en, {
-        indent: indentOf(line.text),
-        signal,
-        clock,
-        reset,
-        resetStyle: style.value,
-      }) + "\n",
-    ),
-  );
+  const architecture = flatten(await documentSymbols(doc.uri))
+    .filter(isArchitecture)
+    .find((s) => s.range.contains(editor.selection.active));
+  if (!architecture) {
+    vscode.window.showWarningMessage(
+      "A state machine is generated into an architecture. Put the cursor on an enumeration type declared in one.",
+    );
+    return;
+  }
+
+  // After the whole type, which may span several lines.
+  const declaredAt = endOfStatement(doc, line.lineNumber) + 1;
+
+  // The architecture's own `begin` is the one at its indentation: a subprogram declared above
+  // it has a `begin` of its own, deeper.
+  const architectureIndent = indentOf(doc.lineAt(architecture.range.start.line).text);
+  const opens = new RegExp(`^${architectureIndent}begin\\b`, "i");
+  let begin = -1;
+  for (let l = declaredAt; l <= architecture.range.end.line; l++) {
+    if (opens.test(doc.lineAt(l).text)) {
+      begin = l;
+      break;
+    }
+  }
+  if (begin < 0) {
+    vscode.window.showWarningMessage(
+      "Could not find the `begin` of the architecture this type is declared in.",
+    );
+    return;
+  }
+
+  const parts = renderFsmParts(en, {
+    indent: indentOf(line.text),
+    processIndent: architectureIndent + "  ",
+    signal,
+    clock,
+    reset,
+    resetStyle: style.value,
+  });
+  await editor.edit((b) => {
+    b.insert(new vscode.Position(declaredAt, 0), parts.declaration + "\n");
+    b.insert(new vscode.Position(begin + 1, 0), "\n" + parts.process + "\n");
+  });
+}
+
+/**
+ * The last line of the statement that starts on `from`: the first line, from there, that ends
+ * one with a semicolon. A type declaration is one statement however many lines it takes.
+ *
+ * ponytail: comments are stripped by looking for `--`, so a `--` inside a string literal on
+ * the same line as a semicolon would mislead it. A type declaration has no strings.
+ */
+function endOfStatement(doc: vscode.TextDocument, from: number): number {
+  for (let l = from; l < doc.lineCount; l++)
+    if (doc.lineAt(l).text.replace(/--.*$/, "").includes(";")) return l;
+  return from;
 }
 
 /** Extract the selection into a constant or signal declared before `begin`. */

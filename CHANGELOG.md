@@ -3,7 +3,7 @@
 Every release says which version of VSG it targets: the rule set, the configuration and the
 reports are that version's. `vsg-rs --version` prints the same thing.
 
-## Unreleased
+## 0.12.0
 
 **Targets VSG 3.35.**
 
@@ -19,9 +19,13 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 * **Forty-one dark colour themes in the VS Code extension**, one for each dark variant of Tokyo
   Night, Catppuccin, Kanagawa, Nightfox, Everforest, Gruvbox Material, One Dark, One Dark Pro,
   Bamboo, Torchlight and others, plus Oxocarbon, Luna, Vague, Afterglow, Moonfly, Tender, Deus,
-  Dogrun, Unokai, Blue Moon, VS Code Dark+, Dracula, Koda Moss and PaperColor. Each is the scheme's own palette applied
-  to the VHDL grammar and to VHDL-LS's semantic tokens, generated from one table that records where
-  every colour came from.
+  Dogrun, Unokai, Blue Moon, VS Code Dark+, Dracula, Koda Moss and PaperColor. Each is the
+  scheme's own palette applied to the VHDL grammar and to VHDL-LS's semantic tokens, generated
+  from one table that records where every colour came from.
+* **Choose which vsg-rs the VS Code extension runs**: the server bundled with the extension (the
+  default), `vsg-rs` from `PATH`, or an executable you name, with `vsg-rs.server.mode` and
+  `vsg-rs.server.path`. Changing either restarts the server, so a local build needs only
+  *vsg-rs: Restart Server*.
 * **Editing actions in the VS Code extension**, built on VHDL-LS: instantiate an entity, from a
   picker or as a completion, naming its library and adding the library clause the name needs;
   declare the signals a port map needs; create a state machine from an enumeration type; add a

@@ -175,12 +175,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v5
         with:
-          node-version: "22"
+          # 22.18 or newer: the generator self-check runs as TypeScript under
+          # `node --experimental-strip-types`, with no build step of its own.
+          node-version: "22.18"
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
       - run: npm ci
         working-directory: editors/vscode
       - run: npm run compile
+        working-directory: editors/vscode
+      # The generators, and the grammar against a tokenized sample.
+      - run: npm test
         working-directory: editors/vscode
 
   # How much of the code the tests reach; a number per pull request, not a gate.

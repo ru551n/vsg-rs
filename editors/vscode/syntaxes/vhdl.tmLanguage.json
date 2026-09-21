@@ -1,0 +1,122 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "VHDL",
+  "scopeName": "source.vhdl",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#bit_string"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#character"
+    },
+    {
+      "include": "#attribute"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.vhdl",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.line.double-dash.vhdl",
+          "begin": "--",
+          "end": "$"
+        }
+      ]
+    },
+    "bit_string": {
+      "name": "constant.numeric.bit-string.vhdl",
+      "match": "(?i)\\b\\d*\\s*[bodxs]?[bodx]\"[0-9a-f_]*\""
+    },
+    "strings": {
+      "name": "string.quoted.double.vhdl",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.vhdl",
+          "match": "\"\""
+        }
+      ]
+    },
+    "character": {
+      "name": "constant.character.vhdl",
+      "match": "(?<![\\w\\)\\]])'(.)'"
+    },
+    "attribute": {
+      "match": "(?<=[\\w\\)\\]])'(\\w+)",
+      "captures": {
+        "1": {
+          "name": "support.other.attribute.vhdl"
+        }
+      }
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.based.vhdl",
+          "match": "(?i)\\b\\d+#[0-9a-f_]+(\\.[0-9a-f_]+)?#([eE][+-]?\\d+)?"
+        },
+        {
+          "name": "constant.numeric.decimal.vhdl",
+          "match": "(?i)\\b\\d[\\d_]*(\\.[\\d_]+)?([e][+-]?\\d+)?\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.vhdl",
+          "match": "(?i)\\b(return|elsif|while|then|else|case|when|loop|next|exit|wait|null|for|if)\\b"
+        },
+        {
+          "name": "storage.type.vhdl",
+          "match": "(?i)\\b(attribute|variable|constant|subtype|signal|shared|alias|type|file)\\b"
+        },
+        {
+          "name": "keyword.other.vhdl",
+          "match": "(?i)\\b(configuration|architecture|disconnect|unaffected|component|parameter|postponed|procedure|protected|transport|fairness|function|generate|inertial|property|register|restrict|sequence|severity|context|default|generic|guarded|library|linkage|literal|package|process|release|access|assert|assume|buffer|downto|entity|impure|others|record|reject|report|select|strong|after|array|begin|block|cover|force|group|inout|label|range|units|until|vmode|vprop|vunit|body|open|port|pure|with|all|end|map|new|out|use|in|is|of|on|to)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.word.vhdl",
+          "match": "(?i)\\b(nand|xnor|and|nor|xor|not|abs|mod|rem|sll|srl|sla|sra|rol|ror|or)\\b"
+        },
+        {
+          "name": "keyword.operator.assignment.vhdl",
+          "match": "<=|:=|=>"
+        },
+        {
+          "name": "keyword.operator.comparison.vhdl",
+          "match": "\\?{0,2}(/=|<=|>=|<|>|=)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.vhdl",
+          "match": "\\*\\*|[+\\-*/&]"
+        }
+      ]
+    }
+  }
+}

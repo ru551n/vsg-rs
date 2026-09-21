@@ -7,6 +7,8 @@ synopsys = "synopsys"
 unparseable = "unparseable"
 # VSG's author.
 Leary = "Leary"
+# The output port of a memory or FIFO, in the VHDL the extension's fixtures use (`din` and `dout`).
+dout = "dout"
 
 [files]
 # VSG's bundled defaults and the learned tables are data, not prose.

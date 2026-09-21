@@ -11,7 +11,7 @@ decide.
 
 ## The bundled server
 
-The extension is published per platform, and each build carries one server binary — the one
+The extension is published per platform, and each build carries one server binary, the one
 produced by the same release that built the extension. Nothing is downloaded at install time, and
 there is no version to keep in step: **vsg-rs: Show Server Version** prints what the extension is
 and what the server it launched reports.
@@ -35,7 +35,7 @@ For working on vsg-rs itself:
 ```
 
 Changing either setting restarts the server, so a rebuild needs only **vsg-rs: Restart Server**
-from the command palette — not a reload of the window.
+from the command palette, not a reload of the window.
 
 ## When it cannot start
 

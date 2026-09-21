@@ -40,7 +40,7 @@ only its formatter stops being used for VHDL.
 Formatting goes through the same entry point as `vsg-rs --fix`, not through a separate
 editor-only formatter. Saving therefore applies **both**:
 
-* every **safe rule fix** — each fix a rule carries, apart from the unsafe ones below; the same
+* every **safe rule fix**: each fix a rule carries, apart from the unsafe ones below; the same
   set `vsg-rs --fix` applies on the command line;
 * the **layout**, which vsg-rs decides for the whole file at once: whitespace, indentation, line
   structure, folding and alignment. See
@@ -55,7 +55,7 @@ What it never does:
 * **Unsafe fixes.** The fixes `--unsafe_fixes` exists for may change what the design does, and
   are never applied on save, offered as a quick fix, or included in fix-all.
 * **Touch a file that does not parse.** A file with a syntax error gets its syntax errors as
-  diagnostics and no edits at all — the buffer is left exactly as you wrote it.
+  diagnostics and no edits at all: the buffer is left exactly as you wrote it.
 
 The rules and the layout come from the project's own `vsg-rs.yaml`, found from the file's
 directory upwards. There is no VS Code setting for any of it; see the
@@ -79,7 +79,7 @@ would write to the file. It appears in the code-actions menu, and can be run on 
 Only fixes vsg-rs would apply itself are offered, in either form; an `--unsafe_fixes` fix is
 never among them.
 
-Fix-all and format-on-save produce the same file, so enabling both is harmless but redundant —
+Fix-all and format-on-save produce the same file, so enabling both is harmless but redundant:
 pick whichever you prefer. `"source.fixAll"` without a language block also runs the fix-all
 action of every other extension that provides one.
 
@@ -92,10 +92,10 @@ inlay hints, so VS Code never asks it for an answer it has no business giving.
 
 | | |
 |---|---|
-| [VHDL-LS](https://marketplace.visualstudio.com/items?itemName=hbohlin.vhdl-ls) | completion, hover, go to definition, references, rename, symbols |
+| [VHDL-LS](https://marketplace.visualstudio.com/items?itemName=hbohlin.vhdl-ls) | completion, hover, go to definition, references, rename, symbols, and what the [editing actions](https://vsg-rs.readthedocs.io/en/latest/vscode-editing/) are built on |
 | vsg-rs | diagnostics with related locations, quick fixes, formatting |
 
-The two are independent — neither requires the other — and installing both gives you the union.
+The two are independent, neither requires the other, and installing both gives you the union.
 To keep VHDL-LS for language intelligence and have vsg-rs format:
 
 1. Install both extensions.
@@ -119,11 +119,11 @@ command palette. For the LSP traffic as well, set `"vsg-rs.trace.server": "messa
 **The server will not start.** The extension says so and names the executable it tried.
 **vsg-rs: Show Server Version** prints which one that was, what the extension is, and what the
 server reports itself to be. The extension ships a server for the common platforms and uses it by
-default, so this usually means either the platform has no bundled build — install vsg-rs and set
-`vsg-rs.server.mode` to `systemPath` — or `vsg-rs.server.path` points at something that is not
+default, so this usually means either the platform has no bundled build (install vsg-rs and set
+`vsg-rs.server.mode` to `systemPath`) or `vsg-rs.server.path` points at something that is not
 there. See [choosing a server](server-selection.md).
 
-**No diagnostics at all.** Check that VS Code recognises the file as VHDL — the extension
+**No diagnostics at all.** Check that VS Code recognises the file as VHDL; the extension
 activates on the `vhdl` language, for `.vhd` and `.vhdl`. If the file has a syntax error, the
 syntax errors are all you get: no rule runs on a tree that does not represent the source.
 

@@ -3,6 +3,31 @@
 Every release says which version of VSG it targets: the rule set, the configuration and the
 reports are that version's. `vsg-rs --version` prints the same thing.
 
+## Unreleased
+
+**Targets VSG 3.35.**
+
+* **Waive a finding from the editor.** The language server offers to waive a finding on its line,
+  in its file or everywhere, asks why, and writes the entry to the project's waiver file. It also
+  reads that file, so a finding the project has already accepted is no longer underlined. The file
+  is `vsg-rs-waivers.yaml`, found by walking up from the source and created at the workspace root
+  when a project has none; `vsg-rs.waiverFile` names it in VS Code.
+* **Sort library and use clauses**, as `source.organizeImports`: `ieee` and `std` first, then
+  alphabetical, then `work` last, with the `use` clauses sorted inside each library. Whole lines
+  are moved and none is rewritten, so comments travel with their clauses, and nothing is offered
+  where that cannot be done safely.
+* **Editing actions in the VS Code extension**, built on VHDL-LS: instantiate an entity, from a
+  picker or as a completion, naming its library and adding the library clause the name needs;
+  declare the signals a port map needs; create a state machine from an enumeration type; add a
+  library and use clause for a symbol; map missing ports; declare an entity as a component; extract
+  a selection to a constant or signal; remove unused use clauses; inlay hints for port and generic
+  maps; a references CodeLens on entities; signature help in a port map; and a tree of the design
+  hierarchy. None of them parses VHDL: everything comes back from the language server. They need
+  VHDL-LS running with a `vhdl_ls.toml`, and say so when it is not. Lint and format do not.
+* **Syntax colouring in the VS Code extension**: a TextMate grammar and two themes, Gruvbox VHDL
+  Dark and Light. Names are coloured from VHDL-LS's semantic tokens, so a constant, a generic and
+  an enumeration literal are told apart by what the analyser resolved them to.
+
 ## 0.11.1
 
 **Targets VSG 3.35.**

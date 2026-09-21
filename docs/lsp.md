@@ -17,18 +17,19 @@ formatting**. It is not a VHDL language server, and it does not pretend to be on
 The two are independent: neither requires the other, and running both gives an editor the union.
 vsg-rs **does not advertise** completion, hover, definition, declaration, type definition,
 implementation, references, rename, document symbols, workspace symbols, semantic tokens,
-signature help or inlay hints — so an editor never asks it for an answer it has no business
+signature help or inlay hints, so an editor never asks it for an answer it has no business
 giving. A test asserts each of those is absent.
 
 ## What it supports
 
 | Request | Behaviour |
 |---|---|
-| `initialize`, `shutdown` | — |
+| `initialize`, `shutdown` | |
 | `textDocument/didOpen`, `didChange`, `didClose` | full-document sync |
 | `textDocument/publishDiagnostics` | the style rules and the lint layer, with `relatedInformation` |
 | `textDocument/formatting` | one edit for the whole document |
-| `textDocument/codeAction` | a quick fix per fixable finding, and `source.fixAll` |
+| `textDocument/codeAction` | a quick fix per fixable finding, `source.fixAll`, a waiver for each finding, and `source.organizeImports` |
+| `workspace/executeCommand` | `vsg-rs.applyWaiver`, which writes a waiver the client has collected a reason for |
 
 ## Quick fixes and fix-all
 
@@ -37,9 +38,46 @@ A quick fix comes from the fix the finding already carries, so what an editor of
 `--fix` would write it.
 
 Only fixes vsg-rs would apply itself are offered, in either form. A fix VSG does not apply by
-default — the ones `--unsafe_fixes` exists for — is never offered as a quick fix and never
+default (the ones `--unsafe_fixes` exists for) is never offered as a quick fix and never
 included in fix-all, because it may change what the design does. One safety rule governs the
 command line, quick fixes and fix-all alike; a test asserts fix-all leaves an unsafe fix alone.
+
+## Waiving a finding
+
+Every finding offers three actions, from the lightbulb: **waive it on this line**, **in this
+file**, or **everywhere**. Choosing one asks for a reason, and the entry is written to the
+project's [waiver file](waivers.md), which is what `--waivers` reads. An empty reason cancels: a
+waiver without one is only a suppression.
+
+The server also *reads* that file. A finding the project has already accepted is not underlined,
+because the command line does not count it either, and an editor that kept showing it would be the
+one place still arguing about a decision that has been made.
+
+The waiver file is the nearest `vsg-rs-waivers.yaml` in the file's directory or an ancestor, and
+a project that has none gets one at the workspace root. A client can name it differently with the
+initialization option `waiverFile`. The entry goes through `workspace/applyEdit`, so the client
+applies it: it can be undone, and a waiver file that is open in the editor is edited rather than
+overwritten behind it.
+
+A waiver file that does not parse is ignored here rather than reported. It is not the source
+file's error, the command line says so, and hiding findings because the *suppression* list is
+malformed would be the wrong way round.
+
+## Sorting the context clauses
+
+`source.organizeImports` sorts the `library` and `use` clauses of a file: `ieee` and `std` first,
+then everything else alphabetically, then `work` last, with the `use` clauses sorted inside each
+library.
+
+It is an action, not a rule, and `--fix` does not do it. No order of a context clause is wrong:
+every one of them analyses, so there is nothing to report. It is a convention, which is what this
+kind of action is for, and an editor can run it on save by listing `source.organizeImports` in
+`editor.codeActionsOnSave`.
+
+It moves whole lines and never rewrites one, so a comment, an alignment or a spelling cannot be
+lost. A comment on the line above a clause travels with it, and a trailing comment stays on its
+line. Where that cannot be done safely there is no action at all: two clauses sharing a line,
+`library ieee, work;`, a context reference, or a comment that cannot be attributed to a clause.
 
 ## It analyses the buffer
 
@@ -53,7 +91,7 @@ buffer before it, and showing that late result would leave stale diagnostics on 
 
 ## It is the same tool underneath
 
-The server calls the same library the command line does — the same parser, formatter, analysis
+The server calls the same library the command line does: the same parser, formatter, analysis
 and configuration. There is no editor-specific implementation of anything:
 
 * **Formatting** goes through the entry point `--fix` uses, so formatting on save leaves a file
@@ -68,8 +106,10 @@ A file that does not parse reports its syntax errors and nothing else, and is ne
 ## Editors
 
 Any client that can launch a command works. On VS Code there is an
-[extension](https://github.com/ru551n/vsg-rs/tree/main/editors/vscode) that launches it for you;
-everywhere else, launch `vsg-rs lsp` directly. See [editors](editors.md).
+[extension](https://github.com/ru551n/vsg-rs/tree/main/editors/vscode) that launches it for you,
+and that also carries [editing actions](vscode-editing.md) such as instantiating an entity. Those
+work through VHDL-LS, not through this server, which still answers no request about what a name
+means. Everywhere else, launch `vsg-rs lsp` directly. See [editors](editors.md).
 
 ```jsonc
 // Neovim, with nvim-lspconfig's generic interface

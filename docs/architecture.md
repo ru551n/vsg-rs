@@ -76,8 +76,8 @@
 ## The boundary with vhdl_ls
 
 vsg-rs and [vhdl_ls](https://github.com/VHDL-LS/rust_hdl) share a front end and divide the work.
-They are built from the same crates — `vhdl_syntax` parses for the formatter, `vhdl_lang`
-resolves names for the lint layer — and that is deliberate: writing a second VHDL parser and a
+They are built from the same crates (`vhdl_syntax` parses for the formatter, `vhdl_lang`
+resolves names for the lint layer), and that is deliberate: writing a second VHDL parser and a
 second name resolver to avoid sharing one would be a larger project than this one, and the
 result would agree with no other tool about what the language means.
 
@@ -96,6 +96,12 @@ the union rather than a conflict.
 [`vsg-rs mcp`](mcp.md) is the same half again, for a reader that is a coding agent rather than an
 editor. It is a façade over the same library entry points, so an agent and a person are told the
 same thing about the same file.
+
+The VS Code extension is a client of both servers. Its [editing actions](vscode-editing.md)
+(instantiating an entity, declaring a port map's signals, and so on) read what they write back
+from VHDL-LS and never answer a question about what a name means themselves. So the boundary
+holds: those requests still go to the server that owns them, and nothing in the extension parses
+VHDL to get round that.
 
 The rule this sets is about *behaviour*, not dependencies. A capability belonging to the left
 column does not move into vsg-rs because the crate that could implement it is linked already. If

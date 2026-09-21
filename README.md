@@ -198,6 +198,44 @@ repeated.
 * [Compatibility with VSG](https://vsg-rs.readthedocs.io/en/latest/compatibility/), measured
   weekly against two corpora
 
+## Disclosure: this code was written by an LLM
+
+Most of this repository was written by Claude, directed and reviewed by a human. Treat that as a
+reason to check it rather than a reason to trust it, so here is what there is to check against.
+None of it depends on the code having been written well.
+
+**It cannot reach anything.** No network, proven four ways in CI on every change: no dependency
+is an HTTP or TLS client, the binary imports no symbol that can reach a host, everything runs
+inside an empty network namespace, and `strace` records zero network syscalls. You can run those
+same checks against the binary you downloaded in about five minutes:
+[running in an airgap](https://vsg-rs.readthedocs.io/en/latest/airgapped/).
+
+**It cannot quietly mangle your files.** Formatted output is re-parsed and must contain exactly
+the same tokens and comments, in the same order, before anything is written. A mismatch is an
+internal error and your file is left untouched, so a formatter bug costs you a run rather than a
+file. Files with syntax errors are never modified, writes are atomic through a temporary file in
+the same directory, and a file whose output equals its input is not rewritten at all.
+
+**Its blast radius is small.** `#![forbid(unsafe_code)]`. No privileges, no service, no daemon,
+no telemetry. The only state it keeps is a 2.3 MB cache of the embedded `ieee` and `std` sources,
+written once per version. The only time it starts another program is `--local_rules`, which runs
+the VSG on your `PATH`, because only VSG can run VSG's Python plugins.
+
+**It is checked against reality, not against itself.** The formatter is compared with VSG's own
+output over a corpus of real VHDL, weekly. Every lint rule must report nothing on three real
+projects unless a person has confirmed each finding is a genuine defect, and those counts are a
+CI gate. Fuzzing runs nightly. Agreement is
+[published per rule](https://vsg-rs.readthedocs.io/en/latest/compatibility/) rather than claimed.
+
+**Known limits, stated rather than buried.** A dependency (`vhdl_lang`) can stack-overflow on
+pathological input, which aborts the process before anything is written. A file you made
+read-only is still replaced, because atomic writes need permission on the directory rather than
+on the file. Both are in the
+[airgap page](https://vsg-rs.readthedocs.io/en/latest/airgapped/).
+
+Cautious first run? `--fix --diff` changes nothing and prints what it would do, `--backup` keeps
+a copy beside each file, and a run without `--fix` never writes anything at all.
+
 ## Relationship to VSG
 
 > **vsg-rs is an independent Rust implementation of a VHDL formatter and style checker that aims

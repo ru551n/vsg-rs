@@ -117,6 +117,31 @@ fn syntax_errors_are_reported_and_nothing_is_changed() {
     assert_eq!(std::fs::read_to_string(good).unwrap(), FORMATTED);
 }
 
+/// Fixing through a symlink writes where it points, and leaves the link a link.
+///
+/// The atomic write renames a temporary file over its target. Renaming over the link itself
+/// would replace it with a regular file and leave the real file untouched, so a repository that
+/// uses links to share one source would quietly lose its layout and keep its old content.
+#[cfg(unix)]
+#[test]
+fn fixing_through_a_symlink_writes_the_file_it_points_at() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let real = write(dir.path(), "real.vhd", UNFORMATTED);
+    let link = dir.path().join("link.vhd");
+    std::os::unix::fs::symlink(&real, &link).expect("symlink");
+
+    assert!(vsg(&[link.to_str().unwrap(), "--fix"], "").status.success());
+
+    assert!(
+        std::fs::symlink_metadata(&link)
+            .expect("the link still exists")
+            .file_type()
+            .is_symlink(),
+        "the symlink was replaced by a regular file"
+    );
+    assert_eq!(std::fs::read_to_string(&real).unwrap(), FORMATTED);
+}
+
 #[test]
 fn fix_in_place_is_idempotent() {
     let dir = tempfile::tempdir().expect("tempdir");

@@ -3,6 +3,14 @@
 Every release says which version of VSG it targets: the rule set, the configuration and the
 reports are that version's. `vsg-rs --version` prints the same thing.
 
+## 0.11.1
+
+**Targets VSG 3.35.**
+
+* `--fix` through a symlink writes the file the link points at, and leaves the link a link.
+  It previously replaced the link with a regular file holding the formatted source, and left the
+  file it pointed at unchanged.
+
 ## 0.11.0
 
 **Targets VSG 3.35.**

@@ -219,6 +219,14 @@ fn layout_findings(parsed: &Parsed, formatted: Vec<u8>, cfg: &Config) -> Vec<Dia
 
 /// Replace `path` with `contents` without ever leaving a partially written file.
 fn write_atomically(path: &Path, contents: &[u8]) -> io::Result<()> {
+    // A symlink names a file that lives somewhere else. Renaming over the link would replace the
+    // link with a regular file and leave the file it pointed at untouched, which quietly breaks
+    // a layout someone built on purpose. Write where it points instead.
+    //
+    // The temporary file then has to be created beside the *resolved* file, because a rename
+    // works within one filesystem and a link may well cross one.
+    let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let path = resolved.as_path();
     let dir = path
         .parent()
         .filter(|d| !d.as_os_str().is_empty())

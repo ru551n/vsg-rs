@@ -1,6 +1,6 @@
 [package]
 name = "vsg-rs"
-version = "0.11.0"
+version = "0.11.1"
 edition = "2024"
 rust-version = "1.95"
 description = "Catch VHDL bugs before simulation: a fast Rust formatter and linter with VSG-compatible rules and configuration."

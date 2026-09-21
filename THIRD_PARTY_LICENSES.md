@@ -75,6 +75,60 @@ would have to be published under MPL-2.0, while vsg-rs code is unaffected.
 
 The two *Gruvbox VHDL* colour themes in `editors/vscode/themes` use the colour palette of
 [Gruvbox](https://github.com/morhetz/gruvbox), the open-source theme by morhetz (MIT/X11), which
-many editors ship. Only its colour values are used: no theme source, grammar or code is copied
-from it or from any other project, and the themes are otherwise vsg-rs's own, under
-MIT OR Apache-2.0.
+many editors ship.
+
+The other themes there, all dark, use the colour palettes of the open-source colour schemes below.
+Each colour value was taken from the scheme's own source at the commit shown, and
+`editors/vscode/scripts/palettes.json` records which scheme every theme comes from.
+`npm test` in `editors/vscode` regenerates the themes from that file and fails if a theme differs
+from it.
+
+| Themes | Colours from | License | Copyright |
+|---|---|---|---|
+| Deus VHDL | [ajmwagar/vim-deus](https://github.com/ajmwagar/vim-deus) at `1be965e7bc1c` | MIT | Avery Wagar |
+| Moonfly VHDL | [bluz71/vim-moonfly-colors](https://github.com/bluz71/vim-moonfly-colors) at `2c883835f5b7` | MIT | vim-moonfly-colors authors |
+| Catppuccin VHDL Mocha, Catppuccin VHDL Macchiato, Catppuccin VHDL Frappe | [catppuccin/palette](https://github.com/catppuccin/palette) at `07d02aa110ef` | MIT | Catppuccin |
+| Afterglow VHDL | [danilo-augusto/vim-afterglow](https://github.com/danilo-augusto/vim-afterglow) at `fe3a0c4d2acf` | MIT | Danilo Augusto dos S. R. de Faria |
+| Dracula VHDL | [dracula/vim](https://github.com/dracula/vim) at `e7817b4baccf` | MIT | Dracula Theme |
+| Nightfox VHDL, Duskfox VHDL, Nordfox VHDL, Terafox VHDL, Carbonfox VHDL | [EdenEast/nightfox.nvim](https://github.com/EdenEast/nightfox.nvim) at `4dacd3f0185a` | MIT | James Simpson |
+| Tokyo Night VHDL Storm, Tokyo Night VHDL Night, Tokyo Night VHDL Moon | [folke/tokyonight.nvim](https://github.com/folke/tokyonight.nvim) at `cdc07ac78467` | Apache-2.0 | folke |
+| Tender VHDL | [jacoborus/tender.vim](https://github.com/jacoborus/tender.vim) at `b66dc330aff9` | MIT | Jacobo Tabernero |
+| VS Code Dark+ VHDL | [Mofiqul/vscode.nvim](https://github.com/Mofiqul/vscode.nvim) at `6439ed89d0e1` | MIT | Mofiqul Islam |
+| One Dark VHDL | [navarasu/onedark.nvim](https://github.com/navarasu/onedark.nvim) at `df4792accde9` | MIT | Navarasu |
+| PaperColor VHDL | [NLKNguyen/papercolor-theme](https://github.com/NLKNguyen/papercolor-theme) at `0cfe64ffb24c` | MIT | Nikyle Nguyen |
+| Oxocarbon VHDL | [nyoom-engineering/oxocarbon.nvim](https://github.com/nyoom-engineering/oxocarbon.nvim) at `cd6523a0836d` | MIT | Riccardo Mazzarini |
+| One Dark Pro VHDL, One Dark Pro VHDL Vivid, One Dark Pro VHDL Dark | [olimorris/onedarkpro.nvim](https://github.com/olimorris/onedarkpro.nvim) at `24c806cb85c1` | MIT | Oli Morris |
+| Koda Moss VHDL | [oskarnurm/koda.nvim](https://github.com/oskarnurm/koda.nvim) at `25a5c98ca2f6` | MIT | Karl Oskar Joosep Nurm |
+| Kanagawa VHDL Wave, Kanagawa VHDL Dragon | [rebelot/kanagawa.nvim](https://github.com/rebelot/kanagawa.nvim) at `bb85e4bfc8d8` | MIT | Tommaso Laurenzi |
+| Bamboo VHDL Vulgaris, Bamboo VHDL Multiplex | [ribru17/bamboo.nvim](https://github.com/ribru17/bamboo.nvim) at `1309bc88bffc` | MIT | Navarasu, Riley Bruins |
+| Everforest VHDL Hard, Everforest VHDL Medium, Everforest VHDL Soft | [sainnhe/everforest](https://github.com/sainnhe/everforest) at `85a86eb62409` | MIT | sainnhe |
+| Gruvbox Material VHDL Hard, Gruvbox Material VHDL Medium, Gruvbox Material VHDL Soft | [sainnhe/gruvbox-material](https://github.com/sainnhe/gruvbox-material) at `11d779b26a9a` | MIT | sainnhe |
+| Torchlight VHDL, Torchlight VHDL Dusk | [skylarmb/torchlight.nvim](https://github.com/skylarmb/torchlight.nvim) at `3347ef0164ef` | MIT | Skylar Brown |
+| Vague VHDL | [vague-theme/vague.nvim](https://github.com/vague-theme/vague.nvim) at `f9060fdaf7b2` | MIT | Alberto Hernandez |
+| Dogrun VHDL | [wadackel/vim-dogrun](https://github.com/wadackel/vim-dogrun) at `8205b05312da` | MIT | wadackel |
+| Luna VHDL | [WTFox/luna.nvim](https://github.com/WTFox/luna.nvim) at `727c19334528` | MIT | A. Fox |
+
+Only colour values are used: no theme source, grammar or code is copied from these or any other
+project, and the themes are otherwise vsg-rs's own, under MIT OR Apache-2.0. Where a scheme
+computes a colour (a blend or a shade of its base colours), the theme carries the computed value.
+
+The MIT-licensed schemes are used under this notice, which applies to the colour values taken from
+each of them, with the copyright holder shown in the table:
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+> associated documentation files (the "Software"), to deal in the Software without restriction,
+> including without limitation the rights to use, copy, modify, merge, publish, distribute,
+> sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions:
+>
+> The above copyright notice and this permission notice shall be included in all copies or
+> substantial portions of the Software.
+>
+> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT
+> NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+> NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+> DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+> OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Tokyo Night is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0),
+and its colour values are used under those terms.

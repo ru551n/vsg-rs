@@ -1,0 +1,162 @@
+{
+  "name": "Gruvbox Material VHDL Medium",
+  "type": "dark",
+  "semanticHighlighting": true,
+  "colors": {
+    "editor.background": "#282828",
+    "editor.foreground": "#d4be98",
+    "editorCursor.foreground": "#d4be98",
+    "editor.selectionBackground": "#45403d",
+    "editor.lineHighlightBackground": "#32302f",
+    "editorLineNumber.foreground": "#5a524c",
+    "editorLineNumber.activeForeground": "#a9b665",
+    "editorWhitespace.foreground": "#32302f",
+    "editorIndentGuide.background1": "#32302f",
+    "editorIndentGuide.activeBackground1": "#5a524c",
+    "editorBracketMatch.background": "#45403d",
+    "editorBracketMatch.border": "#a9b665",
+    "editorError.foreground": "#ea6962",
+    "editorWarning.foreground": "#d8a657",
+    "editorInfo.foreground": "#7daea3",
+    "editorHint.foreground": "#a89984",
+    "editorGutter.addedBackground": "#a9b665",
+    "editorGutter.modifiedBackground": "#7daea3",
+    "editorGutter.deletedBackground": "#ea6962",
+    "editorSuggestWidget.background": "#1b1b1b",
+    "editorSuggestWidget.selectedBackground": "#45403d",
+    "editorHoverWidget.background": "#1b1b1b",
+    "editorWidget.background": "#1b1b1b",
+    "sideBar.background": "#1b1b1b",
+    "sideBarSectionHeader.background": "#282828",
+    "activityBar.background": "#1b1b1b",
+    "activityBar.foreground": "#d4be98",
+    "statusBar.background": "#1b1b1b",
+    "statusBar.foreground": "#d4be98",
+    "titleBar.activeBackground": "#1b1b1b",
+    "titleBar.activeForeground": "#d4be98",
+    "tab.activeBackground": "#282828",
+    "tab.inactiveBackground": "#1b1b1b",
+    "tab.activeBorderTop": "#a9b665",
+    "panel.background": "#282828",
+    "terminal.background": "#282828",
+    "terminal.foreground": "#d4be98",
+    "list.activeSelectionBackground": "#45403d",
+    "list.hoverBackground": "#32302f",
+    "input.background": "#1b1b1b",
+    "dropdown.background": "#1b1b1b",
+    "focusBorder": "#a9b665"
+  },
+  "tokenColors": [
+    {
+      "scope": [
+        "comment",
+        "comment.line.double-dash.vhdl",
+        "comment.block.vhdl"
+      ],
+      "settings": {
+        "foreground": "#928374",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "scope": "string.quoted.double.vhdl",
+      "settings": {
+        "foreground": "#a9b665"
+      }
+    },
+    {
+      "scope": "constant.character.vhdl",
+      "settings": {
+        "foreground": "#a9b665"
+      }
+    },
+    {
+      "scope": "constant.character.escape.vhdl",
+      "settings": {
+        "foreground": "#d8a657"
+      }
+    },
+    {
+      "scope": [
+        "constant.numeric.decimal.vhdl",
+        "constant.numeric.based.vhdl",
+        "constant.numeric.bit-string.vhdl"
+      ],
+      "settings": {
+        "foreground": "#d3869b"
+      }
+    },
+    {
+      "scope": "keyword.control.vhdl",
+      "settings": {
+        "foreground": "#ea6962"
+      }
+    },
+    {
+      "scope": "keyword.other.vhdl",
+      "settings": {
+        "foreground": "#ea6962"
+      }
+    },
+    {
+      "scope": "storage.type.vhdl",
+      "settings": {
+        "foreground": "#ea6962"
+      }
+    },
+    {
+      "scope": "keyword.operator.word.vhdl",
+      "settings": {
+        "foreground": "#ea6962"
+      }
+    },
+    {
+      "scope": [
+        "keyword.operator.comparison.vhdl",
+        "keyword.operator.arithmetic.vhdl"
+      ],
+      "settings": {
+        "foreground": "#e78a4e"
+      }
+    },
+    {
+      "scope": "keyword.operator.assignment.vhdl",
+      "settings": {
+        "foreground": "#e78a4e"
+      }
+    },
+    {
+      "scope": "support.other.attribute.vhdl",
+      "settings": {
+        "foreground": "#d3869b",
+        "fontStyle": "italic"
+      }
+    }
+  ],
+  "semanticTokenColors": {
+    "variable": "#d4be98",
+    "variable.readonly": "#89b482",
+    "parameter": {
+      "foreground": "#7daea3",
+      "fontStyle": "italic"
+    },
+    "property": "#89b482",
+    "enumMember": "#89b482",
+    "function": "#a9b665",
+    "type": {
+      "foreground": "#d8a657",
+      "fontStyle": "italic"
+    },
+    "class": "#d8a657",
+    "namespace": "#d3869b",
+    "struct": {
+      "foreground": "#d8a657",
+      "fontStyle": "italic"
+    },
+    "enum": {
+      "foreground": "#d8a657",
+      "fontStyle": "italic"
+    },
+    "operator": "#e78a4e"
+  }
+}

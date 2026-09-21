@@ -1,0 +1,162 @@
+{
+  "name": "Catppuccin VHDL Macchiato",
+  "type": "dark",
+  "semanticHighlighting": true,
+  "colors": {
+    "editor.background": "#24273a",
+    "editor.foreground": "#cad3f5",
+    "editorCursor.foreground": "#cad3f5",
+    "editor.selectionBackground": "#494d64",
+    "editor.lineHighlightBackground": "#363a4f",
+    "editorLineNumber.foreground": "#494d64",
+    "editorLineNumber.activeForeground": "#c6a0f6",
+    "editorWhitespace.foreground": "#363a4f",
+    "editorIndentGuide.background1": "#363a4f",
+    "editorIndentGuide.activeBackground1": "#494d64",
+    "editorBracketMatch.background": "#494d64",
+    "editorBracketMatch.border": "#c6a0f6",
+    "editorError.foreground": "#ed8796",
+    "editorWarning.foreground": "#eed49f",
+    "editorInfo.foreground": "#91d7e3",
+    "editorHint.foreground": "#8087a2",
+    "editorGutter.addedBackground": "#a6da95",
+    "editorGutter.modifiedBackground": "#eed49f",
+    "editorGutter.deletedBackground": "#ed8796",
+    "editorSuggestWidget.background": "#1e2030",
+    "editorSuggestWidget.selectedBackground": "#494d64",
+    "editorHoverWidget.background": "#1e2030",
+    "editorWidget.background": "#1e2030",
+    "sideBar.background": "#1e2030",
+    "sideBarSectionHeader.background": "#24273a",
+    "activityBar.background": "#1e2030",
+    "activityBar.foreground": "#cad3f5",
+    "statusBar.background": "#1e2030",
+    "statusBar.foreground": "#cad3f5",
+    "titleBar.activeBackground": "#1e2030",
+    "titleBar.activeForeground": "#cad3f5",
+    "tab.activeBackground": "#24273a",
+    "tab.inactiveBackground": "#1e2030",
+    "tab.activeBorderTop": "#c6a0f6",
+    "panel.background": "#24273a",
+    "terminal.background": "#24273a",
+    "terminal.foreground": "#cad3f5",
+    "list.activeSelectionBackground": "#494d64",
+    "list.hoverBackground": "#363a4f",
+    "input.background": "#1e2030",
+    "dropdown.background": "#1e2030",
+    "focusBorder": "#c6a0f6"
+  },
+  "tokenColors": [
+    {
+      "scope": [
+        "comment",
+        "comment.line.double-dash.vhdl",
+        "comment.block.vhdl"
+      ],
+      "settings": {
+        "foreground": "#939ab7",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "scope": "string.quoted.double.vhdl",
+      "settings": {
+        "foreground": "#a6da95"
+      }
+    },
+    {
+      "scope": "constant.character.vhdl",
+      "settings": {
+        "foreground": "#a6da95"
+      }
+    },
+    {
+      "scope": "constant.character.escape.vhdl",
+      "settings": {
+        "foreground": "#f5bde6"
+      }
+    },
+    {
+      "scope": [
+        "constant.numeric.decimal.vhdl",
+        "constant.numeric.based.vhdl",
+        "constant.numeric.bit-string.vhdl"
+      ],
+      "settings": {
+        "foreground": "#f5a97f"
+      }
+    },
+    {
+      "scope": "keyword.control.vhdl",
+      "settings": {
+        "foreground": "#c6a0f6"
+      }
+    },
+    {
+      "scope": "keyword.other.vhdl",
+      "settings": {
+        "foreground": "#c6a0f6"
+      }
+    },
+    {
+      "scope": "storage.type.vhdl",
+      "settings": {
+        "foreground": "#c6a0f6"
+      }
+    },
+    {
+      "scope": "keyword.operator.word.vhdl",
+      "settings": {
+        "foreground": "#c6a0f6"
+      }
+    },
+    {
+      "scope": [
+        "keyword.operator.comparison.vhdl",
+        "keyword.operator.arithmetic.vhdl"
+      ],
+      "settings": {
+        "foreground": "#91d7e3"
+      }
+    },
+    {
+      "scope": "keyword.operator.assignment.vhdl",
+      "settings": {
+        "foreground": "#91d7e3"
+      }
+    },
+    {
+      "scope": "support.other.attribute.vhdl",
+      "settings": {
+        "foreground": "#f5a97f",
+        "fontStyle": "italic"
+      }
+    }
+  ],
+  "semanticTokenColors": {
+    "variable": "#cad3f5",
+    "variable.readonly": "#f5a97f",
+    "parameter": {
+      "foreground": "#ee99a0",
+      "fontStyle": "italic"
+    },
+    "property": "#b7bdf8",
+    "enumMember": "#f5a97f",
+    "function": "#8aadf4",
+    "type": {
+      "foreground": "#eed49f",
+      "fontStyle": "italic"
+    },
+    "class": "#eed49f",
+    "namespace": "#eed49f",
+    "struct": {
+      "foreground": "#eed49f",
+      "fontStyle": "italic"
+    },
+    "enum": {
+      "foreground": "#eed49f",
+      "fontStyle": "italic"
+    },
+    "operator": "#91d7e3"
+  }
+}

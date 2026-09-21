@@ -58,6 +58,11 @@ const binaries = resolve(argument("--binaries") ?? "binaries");
 const only = argument("--target");
 const root = resolve(import.meta.dirname, "..");
 const serverDirectory = join(root, "server");
+// The colour themes use other projects' palettes, whose licence notices have to travel with them.
+const notices = ["LICENSE-MIT", "LICENSE-APACHE", "NOTICE", "THIRD_PARTY_LICENSES.md"];
+for (const name of notices) {
+  cpSync(join(root, "..", "..", name), join(root, name));
+}
 
 let packaged = 0;
 for (const [target, rustTarget] of Object.entries(TARGETS)) {
@@ -82,6 +87,9 @@ for (const [target, rustTarget] of Object.entries(TARGETS)) {
   packaged += 1;
 }
 rmSync(serverDirectory, { recursive: true, force: true });
+for (const name of notices) {
+  rmSync(join(root, name), { force: true });
+}
 
 if (packaged === 0) {
   console.error(`no VSIX produced: nothing matching in ${binaries}`);

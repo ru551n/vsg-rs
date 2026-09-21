@@ -212,6 +212,201 @@
         "label": "Gruvbox VHDL Light",
         "uiTheme": "vs",
         "path": "./themes/gruvbox-vhdl-light.json"
+      },
+      {
+        "label": "Tokyo Night VHDL Storm",
+        "uiTheme": "vs-dark",
+        "path": "./themes/tokyonight-storm.json"
+      },
+      {
+        "label": "Tokyo Night VHDL Night",
+        "uiTheme": "vs-dark",
+        "path": "./themes/tokyonight-night.json"
+      },
+      {
+        "label": "Tokyo Night VHDL Moon",
+        "uiTheme": "vs-dark",
+        "path": "./themes/tokyonight-moon.json"
+      },
+      {
+        "label": "Catppuccin VHDL Mocha",
+        "uiTheme": "vs-dark",
+        "path": "./themes/catppuccin-mocha.json"
+      },
+      {
+        "label": "Catppuccin VHDL Macchiato",
+        "uiTheme": "vs-dark",
+        "path": "./themes/catppuccin-macchiato.json"
+      },
+      {
+        "label": "Catppuccin VHDL Frappe",
+        "uiTheme": "vs-dark",
+        "path": "./themes/catppuccin-frappe.json"
+      },
+      {
+        "label": "Kanagawa VHDL Wave",
+        "uiTheme": "vs-dark",
+        "path": "./themes/kanagawa-wave.json"
+      },
+      {
+        "label": "Kanagawa VHDL Dragon",
+        "uiTheme": "vs-dark",
+        "path": "./themes/kanagawa-dragon.json"
+      },
+      {
+        "label": "Nightfox VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/nightfox.json"
+      },
+      {
+        "label": "Duskfox VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/duskfox.json"
+      },
+      {
+        "label": "Nordfox VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/nordfox.json"
+      },
+      {
+        "label": "Terafox VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/terafox.json"
+      },
+      {
+        "label": "Carbonfox VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/carbonfox.json"
+      },
+      {
+        "label": "Afterglow VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/afterglow.json"
+      },
+      {
+        "label": "Bamboo VHDL Vulgaris",
+        "uiTheme": "vs-dark",
+        "path": "./themes/bamboo-vulgaris.json"
+      },
+      {
+        "label": "Bamboo VHDL Multiplex",
+        "uiTheme": "vs-dark",
+        "path": "./themes/bamboo-multiplex.json"
+      },
+      {
+        "label": "Deus VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/deus.json"
+      },
+      {
+        "label": "Dogrun VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/dogrun.json"
+      },
+      {
+        "label": "Dracula VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/dracula.json"
+      },
+      {
+        "label": "Everforest VHDL Hard",
+        "uiTheme": "vs-dark",
+        "path": "./themes/everforest-hard.json"
+      },
+      {
+        "label": "Everforest VHDL Medium",
+        "uiTheme": "vs-dark",
+        "path": "./themes/everforest-medium.json"
+      },
+      {
+        "label": "Everforest VHDL Soft",
+        "uiTheme": "vs-dark",
+        "path": "./themes/everforest-soft.json"
+      },
+      {
+        "label": "Gruvbox Material VHDL Hard",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gruvbox-material-hard.json"
+      },
+      {
+        "label": "Gruvbox Material VHDL Medium",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gruvbox-material-medium.json"
+      },
+      {
+        "label": "Gruvbox Material VHDL Soft",
+        "uiTheme": "vs-dark",
+        "path": "./themes/gruvbox-material-soft.json"
+      },
+      {
+        "label": "Koda Moss VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/koda-moss.json"
+      },
+      {
+        "label": "Luna VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/luna.json"
+      },
+      {
+        "label": "Moonfly VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/moonfly.json"
+      },
+      {
+        "label": "One Dark VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/onedark.json"
+      },
+      {
+        "label": "One Dark Pro VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/onedarkpro-onedark.json"
+      },
+      {
+        "label": "One Dark Pro VHDL Vivid",
+        "uiTheme": "vs-dark",
+        "path": "./themes/onedarkpro-vivid.json"
+      },
+      {
+        "label": "One Dark Pro VHDL Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/onedarkpro-dark.json"
+      },
+      {
+        "label": "Oxocarbon VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/oxocarbon.json"
+      },
+      {
+        "label": "PaperColor VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/papercolor.json"
+      },
+      {
+        "label": "Tender VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/tender.json"
+      },
+      {
+        "label": "Torchlight VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/torchlight.json"
+      },
+      {
+        "label": "Torchlight VHDL Dusk",
+        "uiTheme": "vs-dark",
+        "path": "./themes/torchlight-dusk.json"
+      },
+      {
+        "label": "Vague VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/vague.json"
+      },
+      {
+        "label": "VS Code Dark+ VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/vscode.json"
       }
     ],
     "views": {
@@ -228,8 +423,9 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "node scripts/package.mjs",
-    "test": "node --experimental-strip-types src/generate.test.ts && node scripts/check-grammar.mjs",
-    "smoke": "node test/smoke/run.mjs"
+    "test": "node --experimental-strip-types src/generate.test.ts && node scripts/check-grammar.mjs && node scripts/check-themes.mjs",
+    "smoke": "node test/smoke/run.mjs",
+    "gen-themes": "node scripts/gen-themes.mjs"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

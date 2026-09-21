@@ -54,6 +54,7 @@ nav:
       - GitHub Action: github-action.md
       - GitLab CI: gitlab-ci.md
       - Report formats: reports.md
+      - Running in an airgap: airgapped.md
   - VSG compatibility:
       - Measured compatibility: compatibility.md
       - Rule status: rule-status.md

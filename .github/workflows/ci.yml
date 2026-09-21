@@ -258,3 +258,79 @@ jobs:
           cargo run --locked --release --example bench > base.txt
           git checkout -
       - run: python3 scripts/compare_bench.py base.txt head.txt
+
+  # Whether vsg-rs can run inside an airgap is a question with an answer, not a promise: the
+  # binary is exercised with no network at all, and traced to show it does not even try to open
+  # a socket. See docs/airgapped.md.
+  airgap:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - run: cargo build --locked --release
+      - run: sudo apt-get update && sudo apt-get install -y strace
+
+      # A dependency that cannot speak a network protocol cannot phone home whatever the code
+      # around it does. `tokio` is here for the language server's stdio transport and is built
+      # without its `net` feature, so it has no sockets to offer.
+      - name: No dependency is a network client
+        run: |
+          cargo tree --locked --edges normal --prefix none \
+            | awk '{ print $1 }' | sort -u > crates.txt
+          if grep -qxE 'reqwest|hyper|h2|curl|ureq|isahc|attohttpc|surf|native-tls|rustls|openssl|openssl-sys|tokio-tungstenite|async-std' crates.txt; then
+            echo "A network client is in the dependency tree:"
+            grep -xE 'reqwest|hyper|h2|curl|ureq|isahc|attohttpc|surf|native-tls|rustls|openssl|openssl-sys|tokio-tungstenite|async-std' crates.txt
+            exit 1
+          fi
+          echo "$(wc -l < crates.txt) crates, none of them a network client."
+
+      # `socketpair` is allowed: it connects two processes on this machine and cannot name a
+      # remote host. Anything that can address one fails the job.
+      - name: The binary imports no symbol that can reach a host
+        run: |
+          if nm -D target/release/vsg-rs \
+            | grep -E ' U (socket|connect|bind|listen|accept|sendto|recvfrom|getaddrinfo|gethostbyname)@'; then
+            echo "The binary imports a symbol that can reach a network."
+            exit 1
+          fi
+          echo "No networking symbols imported."
+
+      - name: Everything works with no network at all
+        run: |
+          printf 'entity dut is\nend entity dut;\n' > dut.vhd
+          sudo unshare -n bash -eu -c '
+            # Prove the isolation before trusting anything that runs inside it: a namespace
+            # with a route to the outside would make the rest of this step meaningless.
+            if [ "$(ip -brief address | grep -cv "^lo ")" -ne 0 ]; then
+              ip -brief address; echo "the namespace has an external interface"; exit 1
+            fi
+            if timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/53" 2>/dev/null; then
+              echo "the network is still reachable"; exit 1
+            fi
+            bin=target/release/vsg-rs
+            "$bin" --version
+            "$bin" --check style,lint dut.vhd
+            "$bin" --fix --diff dut.vhd > /dev/null
+            "$bin" --explain lint_771 > /dev/null
+            "$bin" --list_rules > /dev/null
+            echo "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"server/discover\"}" \
+              | "$bin" mcp | grep -q supportedVersions
+          '
+          echo "The command line, the rule set and the MCP server all work with no network."
+
+      # Stronger than "no network was available": it never asks for one.
+      - name: It does not even try to open a socket
+        run: |
+          strace -f -qq -e trace=%network -o net.log \
+            target/release/vsg-rs --check style,lint dut.vhd || true
+          if grep -vE 'socketpair|^\+\+\+|^---|unfinished|resumed' net.log | grep -q .; then
+            echo "The run made a network syscall:"
+            cat net.log
+            exit 1
+          fi
+          echo "Zero network syscalls."

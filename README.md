@@ -188,6 +188,8 @@ repeated.
 * [Static analysis](https://vsg-rs.readthedocs.io/en/latest/lint/) and
   [project setup](https://vsg-rs.readthedocs.io/en/latest/project-setup/)
 * [Rule reference](https://vsg-rs.readthedocs.io/en/latest/rule-reference/)
+* [Running in an airgap](https://vsg-rs.readthedocs.io/en/latest/airgapped/): what it needs, what
+  it cannot reach, and how to check both yourself
 * [Language server](https://vsg-rs.readthedocs.io/en/latest/lsp/),
   [MCP server](https://vsg-rs.readthedocs.io/en/latest/mcp/) and
   [Claude Code plugin](https://vsg-rs.readthedocs.io/en/latest/claude-code/)

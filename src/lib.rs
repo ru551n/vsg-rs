@@ -14,6 +14,7 @@ mod format;
 pub mod indent;
 mod keywords;
 pub mod layout;
+pub mod organize;
 mod reflow;
 pub mod rules;
 mod verify;

@@ -1143,3 +1143,44 @@ fn a_finding_can_be_waived_from_the_editor() {
     );
     assert!(written.contains("vsg-rs-waivers.yaml"), "{written}");
 }
+
+/// The editor can sort the context clauses, which no rule reports and `--fix` does not do.
+#[test]
+fn context_clauses_can_be_sorted_from_the_editor() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let source = "library work;\nuse work.pkg.all;\n\nlibrary ieee;\n\
+                  use ieee.std_logic_1164.all;\n\nentity dut is\nend entity dut;\n";
+    let file = dir.path().join("dut.vhd");
+    std::fs::write(&file, source).expect("write");
+    let uri = file_uri(&file);
+
+    let mut session = Session::start();
+    session.talk(&[did_open(&uri, source)], 1);
+    let got = session.talk_while(
+        &[serde_json::json!({
+            "jsonrpc": "2.0", "id": 9, "method": "textDocument/codeAction",
+            "params": {
+                "textDocument": { "uri": uri },
+                "range": { "start": { "line": 0, "character": 0 },
+                           "end": { "line": 0, "character": 0 } },
+                "context": { "diagnostics": [], "only": ["source.organizeImports"] }
+            }
+        })],
+        |seen| seen.iter().any(|m| m["id"] == 9),
+    );
+    let actions = got.iter().find(|m| m["id"] == 9).expect("a reply")["result"]
+        .as_array()
+        .expect("actions")
+        .clone();
+    let sort = actions
+        .iter()
+        .find(|a| a["title"] == "Sort library and use clauses")
+        .expect("the sort action");
+    let edited = sort["edit"]["changes"][&uri][0]["newText"]
+        .as_str()
+        .expect("new text");
+    assert!(
+        edited.starts_with("library ieee;\nuse ieee.std_logic_1164.all;\n\nlibrary work;"),
+        "{edited}"
+    );
+}

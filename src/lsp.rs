@@ -644,6 +644,7 @@ impl LanguageServer for Backend {
                         code_action_kinds: Some(vec![
                             CodeActionKind::QUICKFIX,
                             CodeActionKind::SOURCE_FIX_ALL,
+                            CodeActionKind::SOURCE_ORGANIZE_IMPORTS,
                         ]),
                         ..CodeActionOptions::default()
                     },
@@ -892,6 +893,30 @@ impl LanguageServer for Backend {
                             }));
                         }
                     }
+                }
+
+                // Sorting the context clauses is not a rule and not a fix: no order is wrong,
+                // so nothing reports it and `--fix` does not do it. It is offered where an
+                // editor offers the same thing for other languages, and run on save by anyone
+                // who adds `source.organizeImports` to `editor.codeActionsOnSave`.
+                if allows(&CodeActionKind::SOURCE_ORGANIZE_IMPORTS)
+                    && let Some(organized) = vsg_rs::organize::sort_context_clauses(&parsed)
+                {
+                    actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                        title: "Sort library and use clauses".to_owned(),
+                        kind: Some(CodeActionKind::SOURCE_ORGANIZE_IMPORTS),
+                        edit: Some(workspace_edit(
+                            &uri,
+                            vec![TextEdit {
+                                range: Range::new(
+                                    Position::new(0, 0),
+                                    position_of(&text, text.len()),
+                                ),
+                                new_text: organized,
+                            }],
+                        )),
+                        ..CodeAction::default()
+                    }));
                 }
 
                 // Fix all: the whole document as `--fix` would write it, which applies the safe

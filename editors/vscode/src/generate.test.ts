@@ -267,3 +267,24 @@ console.log("ok - library order");
   assert.equal(clause(["entity top is"], 0, "work"), null, "work is always visible");
 }
 console.log("ok - instance library");
+
+// --- the state machine belongs in two places ---------------------------------------------------
+// A signal is a declaration and a process is a concurrent statement, and an architecture keeps
+// them either side of `begin`. Written as one block, the process sat among the declarations and
+// the server rejected the file ("Expected 'type', 'subtype', 'component', ...").
+{
+  const { renderFsmParts: parts, renderFsm: block } = await import("./generate.ts");
+  const fsm = { name: "state_t", literals: ["idle", "run", "finish"] };
+  const both = parts(fsm, { indent: "  ", processIndent: "  ", signal: "state", clock: "clk", reset: "rst" });
+
+  assert.equal(both.declaration, "  signal state : state_t := idle;");
+  assert.ok(!both.declaration.includes("process"), "the declaration holds no statement");
+  assert.ok(both.process.startsWith("  p_state : process (clk) is"));
+  assert.ok(both.process.endsWith("end process;"));
+  assert.ok(!both.process.includes("signal state"), "and the process holds no declaration");
+  // The process takes its own indentation, since it sits in a different part of the unit.
+  assert.ok(parts(fsm, { indent: "  ", processIndent: "    " }).process.startsWith("    p_state"));
+  // Joined, it is what it always was.
+  assert.equal(block(fsm, { signal: "state", clock: "clk", reset: "rst" }), `${both.declaration}\n\n${both.process}`);
+}
+console.log("ok - state machine parts");

@@ -72,8 +72,11 @@ signal dout : std_logic_vector(16 - 1 downto 0);
 Ports mapped to `open`, to an expression or to an already declared name are skipped.
 
 **Create State Machine from Enum Type** puts the cursor on an enumeration type and generates the
-state signal and a registered process with a `case` arm per literal. The clock and reset are taken
-from the entity's own ports; the reset style is your choice of synchronous, asynchronous or none.
+state signal and a registered process with a `case` arm per literal. The signal is declared after
+the type, which may span several lines, and the process is added after the architecture's own
+`begin`, because a process cannot sit among declarations. The clock and reset are taken from the
+entity's own ports; the reset style is your choice of synchronous, asynchronous or none. The type
+has to be declared in an architecture.
 
 **Add Library and Use Clause for Symbol** is the VHDL answer to "add import". Put the cursor on a
 name, or take the lightbulb on an unresolved-name error, and every package the server knows that
@@ -173,6 +176,11 @@ Two facts about the server shaped the code, and are worth knowing if you change 
   being selected first.
 * Extract to constant or signal asks for the type, since the server cannot give the type of an
   arbitrary expression.
+* A use clause added for a name used in an architecture goes above that architecture, which keeps
+  it scoped to it. A `library` clause already given above its entity is therefore repeated, which
+  is legal.
+* When the server reports no symbols for a file, for example because it does not parse, the
+  commands that need them say that no server answered.
 * An instance generated from an entity maps each formal to an actual of the same name. Those
   actuals, and a generic map's values, are yours to adjust: an instance is not valid until the
   signals it names exist, which is what Declare Signals is for.
@@ -188,8 +196,9 @@ npm test
 ```
 
 The commands themselves can only be checked in an editor, against a server. `npm run smoke` builds
-a small two-library project, starts VS Code with the extension and a real `vhdl_ls`, and runs the
-commands against it, answering their prompts:
+a small two-library project, starts VS Code with the extension and a real `vhdl_ls`, and runs
+every command and provider against it, answering their prompts. It asserts on the result, and on
+whether the server accepts what was generated:
 
 ```sh
 VHDL_LS=/path/to/vhdl_ls npm run smoke

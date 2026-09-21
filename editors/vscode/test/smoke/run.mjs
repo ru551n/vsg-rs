@@ -43,9 +43,12 @@ for (const directory of [workspace, join(workspace, "other"), join(workspace, ".
 }
 const write = (name, text) => writeFileSync(join(workspace, name), text);
 
+// top, fifo, leaf, fsm, usage and clauses, and the forty below.
+const ENTITIES = 46;
+
 // Two libraries. A library name of `work` in vhdl_ls.toml is silently ignored by the server, so
 // neither uses it.
-write("vhdl_ls.toml", "[libraries]\nmylib.files = ['top.vhd', 'fifo.vhd', 'unit*.vhd']\nother.files = ['other/*.vhd']\n");
+write("vhdl_ls.toml", "[libraries]\nmylib.files = ['*.vhd']\nother.files = ['other/*.vhd']\n");
 write(".vscode/settings.json", JSON.stringify({ "vhdlls.languageServer": "user", "vhdlls.languageServerUserPath": vhdlLs }, null, 2));
 
 write("fifo.vhd", `library ieee;
@@ -109,6 +112,60 @@ begin
 end architecture rtl;
 `);
 
+// A state machine over an enumeration type that spans several lines, so the signal has to go
+// after all of it and the process after the architecture's own `begin`.
+write("fsm.vhd", `library ieee;
+use ieee.std_logic_1164.all;
+
+entity fsm is
+  port (
+    clk : in std_logic;
+    rst : in std_logic;
+    go  : in std_logic
+  );
+end entity fsm;
+
+architecture rtl of fsm is
+
+  type state_t is (
+    idle,
+    run,
+    finish
+  );
+
+begin
+
+end architecture rtl;
+`);
+
+// A use clause that nothing needs, beside one that is needed.
+write("clauses.vhd", `library ieee;
+use ieee.std_logic_1164.all;
+use ieee.math_real.all;
+
+entity clauses is
+  port (
+    a : in std_logic
+  );
+end entity clauses;
+`);
+
+// A type the file cannot see yet: it needs \`use ieee.numeric_std.all\`.
+write("usage.vhd", `library ieee;
+use ieee.std_logic_1164.all;
+
+entity usage is
+end entity usage;
+
+architecture rtl of usage is
+
+  signal x : unsigned(3 downto 0);
+
+begin
+
+end architecture rtl;
+`);
+
 // Forty more, with eight ports each. The server answers a workspace symbol query with at most
 // 200 symbols and counts every port and architecture, so a project this size is one a query
 // cannot list in full. That is what makes it a test of the picker and the hierarchy.
@@ -138,7 +195,7 @@ spawnSync(
     "--disable-workspace-trust",
     workspace,
   ],
-  { stdio: "inherit", env: { ...process.env, VSGRS_EXT: extension, VSGRS_RESULTS: results } },
+  { stdio: "inherit", env: { ...process.env, VSGRS_EXT: extension, VSGRS_RESULTS: results, VSGRS_ENTITIES: String(ENTITIES) } },
 );
 
 // The launcher returns as soon as the editor has started; the suite writes `done` when it ends.

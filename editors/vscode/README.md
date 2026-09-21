@@ -2,7 +2,7 @@
 
 VHDL in VS Code: formatting, diagnostics and quick fixes from
 [vsg-rs](https://github.com/ru551n/vsg-rs), editing actions such as instantiating an entity, and
-syntax colouring with forty-one themes.
+syntax colouring with forty-three themes.
 
 It is two things, and only one of them needs anything else installed:
 
@@ -43,8 +43,8 @@ All of it is described, with examples and limits, in
 
 ## Colour
 
-The extension contributes the `vhdl` language definition, a TextMate grammar and forty-one themes:
-**Gruvbox VHDL Dark** and **Gruvbox VHDL Light**, and thirty-nine dark ones named for the schemes
+The extension contributes the `vhdl` language definition, a TextMate grammar and forty-three themes:
+**Gruvbox VHDL Dark** and **Gruvbox VHDL Light**, and forty-one dark ones named for the schemes
 they take their colours from, such as **Tokyo Night VHDL Night**, **Catppuccin VHDL Mocha** and
 **Kanagawa VHDL Wave**. The grammar covers what VHDL-LS never
 classifies (keywords, comments, strings, literals, operators); every name is coloured from its

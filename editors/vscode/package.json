@@ -399,6 +399,16 @@
         "path": "./themes/torchlight-dusk.json"
       },
       {
+        "label": "Unokai VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/unokai.json"
+      },
+      {
+        "label": "Blue Moon VHDL",
+        "uiTheme": "vs-dark",
+        "path": "./themes/blue-moon.json"
+      },
+      {
         "label": "Vague VHDL",
         "uiTheme": "vs-dark",
         "path": "./themes/vague.json"

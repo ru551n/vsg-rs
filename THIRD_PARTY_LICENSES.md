@@ -93,6 +93,7 @@ from it.
 | Nightfox VHDL, Duskfox VHDL, Nordfox VHDL, Terafox VHDL, Carbonfox VHDL | [EdenEast/nightfox.nvim](https://github.com/EdenEast/nightfox.nvim) at `4dacd3f0185a` | MIT | James Simpson |
 | Tokyo Night VHDL Storm, Tokyo Night VHDL Night, Tokyo Night VHDL Moon | [folke/tokyonight.nvim](https://github.com/folke/tokyonight.nvim) at `cdc07ac78467` | Apache-2.0 | folke |
 | Tender VHDL | [jacoborus/tender.vim](https://github.com/jacoborus/tender.vim) at `b66dc330aff9` | MIT | Jacobo Tabernero |
+| Blue Moon VHDL | [kyazdani42/blue-moon](https://github.com/kyazdani42/blue-moon) at `ed4ed60abeb8` | None stated | kyazdani42 |
 | VS Code Dark+ VHDL | [Mofiqul/vscode.nvim](https://github.com/Mofiqul/vscode.nvim) at `6439ed89d0e1` | MIT | Mofiqul Islam |
 | One Dark VHDL | [navarasu/onedark.nvim](https://github.com/navarasu/onedark.nvim) at `df4792accde9` | MIT | Navarasu |
 | PaperColor VHDL | [NLKNguyen/papercolor-theme](https://github.com/NLKNguyen/papercolor-theme) at `0cfe64ffb24c` | MIT | Nikyle Nguyen |
@@ -105,12 +106,15 @@ from it.
 | Gruvbox Material VHDL Hard, Gruvbox Material VHDL Medium, Gruvbox Material VHDL Soft | [sainnhe/gruvbox-material](https://github.com/sainnhe/gruvbox-material) at `11d779b26a9a` | MIT | sainnhe |
 | Torchlight VHDL, Torchlight VHDL Dusk | [skylarmb/torchlight.nvim](https://github.com/skylarmb/torchlight.nvim) at `3347ef0164ef` | MIT | Skylar Brown |
 | Vague VHDL | [vague-theme/vague.nvim](https://github.com/vague-theme/vague.nvim) at `f9060fdaf7b2` | MIT | Alberto Hernandez |
+| Unokai VHDL | [vim/colorschemes](https://github.com/vim/colorschemes) at `8b294bc5e0b3` | None stated | k-37 |
 | Dogrun VHDL | [wadackel/vim-dogrun](https://github.com/wadackel/vim-dogrun) at `8205b05312da` | MIT | wadackel |
 | Luna VHDL | [WTFox/luna.nvim](https://github.com/WTFox/luna.nvim) at `727c19334528` | MIT | A. Fox |
 
 Only colour values are used: no theme source, grammar or code is copied from these or any other
-project, and the themes are otherwise vsg-rs's own, under MIT OR Apache-2.0. Where a scheme
-computes a colour (a blend or a shade of its base colours), the theme carries the computed value.
+project, and the themes are otherwise vsg-rs's own, under MIT OR Apache-2.0. Unokai and Blue Moon
+come from repositories that state no licence; they are credited to their authors, and only their
+colour values are used. Where a scheme computes a colour (a blend or a shade of its base colours),
+the theme carries the computed value.
 
 The MIT-licensed schemes are used under this notice, which applies to the colour values taken from
 each of them, with the copyright holder shown in the table:

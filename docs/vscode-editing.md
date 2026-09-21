@@ -127,7 +127,7 @@ example `vsg-rs.instantiateEntity`.
 ## Syntax colouring
 
 The extension contributes the `vhdl` language definition, a TextMate grammar, and colour themes:
-**Gruvbox VHDL Dark** and **Gruvbox VHDL Light**, and thirty-nine dark ones named for the schemes
+**Gruvbox VHDL Dark** and **Gruvbox VHDL Light**, and forty-one dark ones named for the schemes
 they take their colours from, such as **Tokyo Night VHDL Night**, **Catppuccin VHDL Mocha** and
 **Kanagawa VHDL Wave**. Choose one with *Preferences: Color Theme*. The grammar covers only what VHDL-LS never
 classifies: keywords, comments, strings, literals, attributes and operators. Every name is

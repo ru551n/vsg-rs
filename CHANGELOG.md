@@ -16,10 +16,10 @@ reports are that version's. `vsg-rs --version` prints the same thing.
   alphabetical, then `work` last, with the `use` clauses sorted inside each library. Whole lines
   are moved and none is rewritten, so comments travel with their clauses, and nothing is offered
   where that cannot be done safely.
-* **Thirty-nine dark colour themes in the VS Code extension**, one for each dark variant of Tokyo
+* **Forty-one dark colour themes in the VS Code extension**, one for each dark variant of Tokyo
   Night, Catppuccin, Kanagawa, Nightfox, Everforest, Gruvbox Material, One Dark, One Dark Pro,
   Bamboo, Torchlight and others, plus Oxocarbon, Luna, Vague, Afterglow, Moonfly, Tender, Deus,
-  Dogrun, VS Code Dark+, Dracula, Koda Moss and PaperColor. Each is the scheme's own palette applied
+  Dogrun, Unokai, Blue Moon, VS Code Dark+, Dracula, Koda Moss and PaperColor. Each is the scheme's own palette applied
   to the VHDL grammar and to VHDL-LS's semantic tokens, generated from one table that records where
   every colour came from.
 * **Editing actions in the VS Code extension**, built on VHDL-LS: instantiate an entity, from a

@@ -3,18 +3,18 @@
 Every release says which version of VSG it targets: the rule set, the configuration and the
 reports are that version's. `vsg-rs --version` prints the same thing.
 
-## Unreleased
+## 0.11.0
 
 **Targets VSG 3.35.**
 
 * **The lint layer reports definite errors by default.** *This changes what a default run
   reports.* Every rule now states how sure it is, and only those that can show a program cannot
-  do what it says run unless you ask for more: 53 of 71 today. A finding from a default run is
-  something to correct rather than something to weigh up, and an empty report means vsg-rs
-  proved nothing rather than that it merely stayed quiet.
+  do what it says run unless you ask for more. A finding from a default run is something to
+  correct rather than something to weigh up, and an empty report means vsg-rs proved nothing
+  rather than that it merely stayed quiet.
 
-    Thirteen rules moved to **off by default**, each reporting something that is legal VHDL and
-    may well be meant: `lint_001`, `lint_002`, `lint_004`, `lint_005`, `lint_006`, `lint_600`,
+    Rules that report something legal VHDL allows, and that may well be meant, moved to **off
+    by default**: `lint_001`, `lint_002`, `lint_004`, `lint_005`, `lint_006`, `lint_600`,
     `lint_601`, `lint_710`, `lint_711`, `lint_712`, `lint_720`, `lint_730` and `lint_750`. They
     join `lint_602`, `lint_603`, `lint_700`, `lint_713` and `lint_760`, which were already off.
     Two drivers on a resolved type are what a resolution function is for; an unused declaration
@@ -38,12 +38,64 @@ reports are that version's. `vsg-rs --version` prints the same thing.
     so an advisory rule you switched on arrives as a code smell rather than claiming the design
     is broken. `--list_rules` prints each rule's class and whether a default run uses it, and the
     [rule reference](https://vsg-rs.readthedocs.io/en/latest/rule-reference/) is grouped by the
-    same thing — all of them read one registry, so they cannot drift apart.
+    same thing, and all of them read one registry, so they cannot drift apart.
+
+* **An MCP server.** `vsg-rs mcp` answers the same questions to a coding agent that the language
+  server answers to an editor, over the Model Context Protocol, from the same library entry
+  points. Three tools: `lint`, `format` and `explain_rule`. `lint` and `format` take either a
+  path or a buffer, and a buffer is source that is not a file yet, so an agent can check what it
+  is about to write before writing it. `format` with `write` fixes a file in place and returns
+  only what changed, rather than sending the file through the conversation twice. Nothing is
+  written unless asked, never for source that does not parse, and never when the result equals
+  the file.
+
+* **A Claude Code plugin**, so an agent is told what the tool is for rather than having to be
+  told by whoever wrote the prompt:
+
+    ```text
+    /plugin marketplace add ru551n/vsg-rs
+    /plugin install vsg-rs@vsg-rs
+    ```
+
+    It carries the `vsg` skill, which says to check the files that changed rather than the tree,
+    that anything a default run reports is a definite error, and that a run warning about a
+    missing library map has not called the file clean. It registers the MCP server as well.
+    `vsg-rs` itself still has to be on `PATH`.
+
+* **New rules.** These report something that cannot work, and run by default:
+
+    | Rule | Reports |
+    |---|---|
+    | `lint_741` | a vector compared with one of a different width, which is never equal |
+    | `lint_751` | a configuration naming an architecture, or an instance, that is not declared |
+    | `lint_770` | a process with no sensitivity list and no `wait`, which can never suspend |
+    | `lint_771` | a function that can reach the end of its body without returning a value |
+    | `lint_772` | a statement that nothing can reach |
+    | `lint_780` | an index outside the declared range of the array it selects from |
+    | `lint_781` | a division, `mod` or `rem` whose divisor is written as zero |
+    | `lint_782` | an assignment of a value outside the declared range of its target |
+
+    Several of these are things a simulator reports only when a run reaches the statement, and
+    only then. `lint_741` is reported by nothing else at all: comparing a four-bit vector with a
+    three-bit literal is legal VHDL that is always false.
+
+    Three are advisory, and off unless asked for:
+
+    | Rule | Reports |
+    |---|---|
+    | `lint_701` | a register reset by one signal used in logic reset by another |
+    | `lint_702` | a register a clocked process assigns that its reset branch does not |
+    | `lint_703` | a clock used on both its rising and its falling edge |
+
+* **Five language server fixes.** Diagnostics went stale after a document closed; one project was
+  shared between unrelated workspaces; an unreadable `vhdl_ls.toml` silenced most of the lint
+  layer without saying so; findings after a tab were pointed at the wrong column; and a file
+  reached through a symlink was analysed as though it belonged to no library.
 
 * **A language server.** `vsg-rs lsp` serves diagnostics, quick fixes and formatting over LSP,
   from the same library the command line uses: the same parser, formatter, analysis and
   configuration, so an editor and CI cannot disagree. It is deliberately narrow and does not
-  advertise completion, hover, definition, references, rename or symbols — those belong to a VHDL
+  advertise completion, hover, definition, references, rename or symbols: those belong to a VHDL
   language server such as `vhdl_ls`, which it is meant to run beside. Diagnostics carry their
   related locations, quick fixes come from the fix a finding already holds, and `source.fixAll`
   applies what `--fix` would. See [the language server](docs/lsp.md).
@@ -59,9 +111,9 @@ reports are that version's. `vsg-rs --version` prints the same thing.
   driver and a combinational loop at each signal on it, rather than listing line numbers inside a
   sentence. The console shows them under the finding, SARIF carries them as `relatedLocations`,
   and SARIF now also carries safe fixes as `fixes`.
-* **`--check lint` is about five times faster.** The style layer no longer runs when only lint was
+* **`--check lint` is faster.** The style layer no longer runs when only lint was
   asked for, the cross-file index is built once for whichever layers need it, and the lint layer
-  runs in the same worker processes the style layer uses. On VUnit's 863 files: 3.1s to 0.6s.
+  runs in the same worker processes the style layer uses.
 * `lint_700` (clock domain crossings) is now **off by default**. It infers which signal is a
   clock rather than deriving it, so it cannot point at the evidence the other rules can; enable it
   with `rule: lint_700: disable: false`.
@@ -70,30 +122,30 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 * `--sonarqube FILE` writes SonarQube's generic issue JSON. SonarQube reads SARIF too, but files
   every SARIF issue as a vulnerability; this format carries the type, so the lint layer arrives as
   a bug and style as a code smell. Severity separates what needs a person from what does not: a
-  finding `--fix` repairs is `INFO`, a lint finding is `CRITICAL`. Jenkins needs nothing new —
+  finding `--fix` repairs is `INFO`, a lint finding is `CRITICAL`. Jenkins needs nothing new:
   Warnings-NG parses the SARIF file.
-* `lint_740` reports a vector assigned to one of a different width — legal VHDL that fails only
+* `lint_740` reports a vector assigned to one of a different width, legal VHDL that fails only
   when the design elaborates. It measures only whole objects with literal ranges, so what it
   reports is certain.
 * `lint_700` reports an unsynchronised clock domain crossing: a register from one clock used in
   logic on another. A plain capture into a flop is read as a synchroniser's first stage, and
   `vsg_rs: synchronizers` names the entities a crossing may safely pass through.
 * `lint_710` and `lint_711` read enumerated state machines out of the source and report a state
-  nothing can enter and a state nothing can leave — the two checks a netlist is usually thought
+  nothing can enter and a state nothing can leave, the two checks a netlist is usually thought
   necessary for.
 * `lint_720` reports a combinational loop: a signal that depends on itself with no register in
   the way. The cycle is found in the source, not in a netlist.
-* `lint_730` reports a signal that something reads but nothing drives — no assignment, and no
+* `lint_730` reports a signal that something reads but nothing drives: no assignment, and no
   instance output. It is the first check built on a design-wide view: the run now reads every
   input for its entities and port modes, so a port map can be read as drivers and readers.
 * Every finding carries its layer (`style`, `layout` or `lint`), derived from the rule id so it
   cannot disagree with what produced it. `--statistics` shows it per rule and totals per layer,
   and `--fail_on style,layout,lint` chooses which layers make the run fail while the rest are
-  still reported — so a team can gate CI on the lint layer while style only informs.
+  still reported, so a team can gate CI on the lint layer while style only informs.
 * `--explain RULE` says what a rule checks, which layer runs it, whether it is fixed, and links
   to VSG's documentation for VSG's own rules.
-* A second layer of rules (`docs/lint.md`). The root command stays VSG's — same arguments, same
-  reports, byte-identical output — and `vsg-rs lint ...` runs rules that need names resolved,
+* A second layer of rules (`docs/lint.md`). The root command stays VSG's, with the same arguments, the same
+  reports and byte-identical output, and `vsg-rs lint ...` runs rules that need names resolved,
   through `vhdl_lang`. `--check style,lint` runs both in one pass.
 * 58 lint rules: sensitivity lists, unused declarations, and the name, type, subprogram and
   association diagnostics `vhdl_lang` produces, each with an id and a description in
@@ -120,12 +172,8 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 * The documentation is published at <https://vsg-rs.readthedocs.io/>. It covers what vsg-rs adds
   on top of VSG; the rules, their options and the configuration file are VSG's and are linked to
   rather than repeated, so the two cannot drift apart.
-* The weekly compatibility job gains open-logic (825 configured rules) as a second corpus and a
-  third comparison against whatever VSG released most recently.
-
-## 0.11.0
-
-**Targets VSG 3.35.**
+* The weekly compatibility job gains a second corpus, and a comparison against whatever VSG
+  released most recently.
 
 * Waivers (`docs/waivers.md`): `--waivers FILE` accepts the violations a project has decided to
   live with, listed by rule, file glob, lines and reason. `--generate_waivers FILE` writes a
@@ -137,11 +185,10 @@ reports are that version's. `vsg-rs --version` prints the same thing.
 * `comment_004` (`number_of_spaces`) sets the spaces before a trailing comment.
 * `--range` works with files, not only with `--stdin`.
 * A GitLab CI recipe (`docs/gitlab-ci.md`): code-quality report, JUnit and `--statistics`.
-* More layout violations report the VSG rule id instead of `format`: the learned table covers
-  410 kinds of token-pair change, up from 301. The same lines are reported, attributed more
-  precisely (on 150 VUnit files, `format` findings fall from 15118 to 11851).
-* A weekly job measures agreement with VSG 3.35 over VUnit's VHDL and writes the per-rule table
-  to the job summary (`scripts/compare_vsg.py --markdown`).
+* More layout violations report the VSG rule id instead of `format`. The same lines are
+  reported, attributed more precisely.
+* A weekly job measures agreement with VSG 3.35 and writes the per-rule table to the job
+  summary (`scripts/compare_vsg.py --markdown`).
 * `vsg_rs: reflow_comments` re-wraps comment paragraphs to the line width (off by default; VSG
   has no such rule). Structured comments, directives and formatter-off regions are left alone.
 * `FormatConfig` is `#[non_exhaustive]`: struct literals of it no longer compile outside the

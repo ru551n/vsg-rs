@@ -14,8 +14,14 @@ layer resolves `std_logic_vector` with no simulator installed and no library pat
 project's own configuration and its `vhdl_ls.toml` are ordinary files, found by walking up from
 the file being checked.
 
-There is no licence check, no update check, no telemetry, no crash reporter, and no cache or
-state directory. A first run and a thousandth run touch the same files.
+There is no licence check, no update check, no telemetry and no crash reporter.
+
+It writes one thing you did not name. The lint layer resolves names through a library mapping
+that is file based, so on its first run it unpacks the embedded `ieee` and `std` sources into
+`$XDG_CACHE_HOME/vsg-rs/vhdl_libraries-<version>/` (or `$HOME/.cache/...`, or the temporary
+directory if neither is set): 39 files, about 2.3 MB, written once per version and skipped when
+they are already there. The style layer writes nothing at all. Deleting that directory costs one
+extra second on the next lint run and nothing else.
 
 ## It makes no network calls
 

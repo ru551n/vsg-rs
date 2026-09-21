@@ -120,9 +120,15 @@ export interface InstanceOptions {
   skipDefaultedGenerics?: boolean;
   /** Emit LSP snippet placeholders so the actuals can be tabbed through. */
   snippet?: boolean;
+  /**
+   * How the library is spelled. Defaults to the one the server reported, which is only right
+   * when the file declares it: inside the library the file is itself analysed in, `work` is
+   * the name that needs no clause, and spelling that library out without one is an error.
+   */
+  library?: string;
 }
 
-/** Instantiation with the library vhdl_ls reported, formals mapped to like-named actuals. */
+/** Instantiation of an entity, formals mapped to like-named actuals. */
 export function renderInstance(e: EntityIface, opts: InstanceOptions = {}): string {
   const i = opts.indent ?? "  ";
   const label = opts.label ?? `i_${e.name}`;
@@ -134,7 +140,7 @@ export function renderInstance(e: EntityIface, opts: InstanceOptions = {}): stri
     opts.snippet ? `\${${++stop}:${x.name}}` : x.name;
 
   const head = opts.snippet ? `\${${++stop}:${label}}` : label;
-  const out = [`${i}${head} : entity ${e.library}.${e.name}`];
+  const out = [`${i}${head} : entity ${opts.library ?? e.library}.${e.name}`];
   if (generics.length) {
     out.push(`${i}  generic map (`);
     out.push(...assocList(generics, actual, `${i}    `));
@@ -288,7 +294,8 @@ export interface ContextEdit {
 
 /**
  * The context clause needed to make `library.pkg` visible to the design unit
- * starting at `unitLine`, or null when it already is.
+ * starting at `unitLine`, or null when it already is. Without `pkg` only the library
+ * itself is wanted, as for `entity lib.name`, and only its clause is added.
  *
  * ponytail: the existing clause is recognised by matching `library` and `use`
  * at the start of a line. A clause split across lines is not detected and would
@@ -298,7 +305,7 @@ export function contextClauseEdit(
   lines: string[],
   unitLine: number,
   library: string,
-  pkg: string,
+  pkg?: string,
 ): ContextEdit | null {
   const lib = library.toLowerCase();
 
@@ -310,12 +317,16 @@ export function contextClauseEdit(
     start--;
 
   const region = lines.slice(start, unitLine);
-  const isUse = new RegExp(`^\\s*use\\s+${lib}\\s*\\.\\s*${pkg}\\s*\\.`, "i");
-  if (region.some((l) => isUse.test(l))) return null;
+  if (pkg) {
+    const isUse = new RegExp(`^\\s*use\\s+${lib}\\s*\\.\\s*${pkg}\\s*\\.`, "i");
+    if (region.some((l) => isUse.test(l))) return null;
+  }
 
   const hasLibrary =
     IMPLICIT_LIBRARIES.has(lib) ||
     region.some((l) => new RegExp(`^\\s*library\\b[^;]*\\b${lib}\\b`, "i").test(l));
+
+  if (!pkg && hasLibrary) return null;
 
   let lastClause = -1;
   region.forEach((l, i) => {
@@ -327,7 +338,7 @@ export function contextClauseEdit(
 
   let text = "";
   if (!hasLibrary) text += `${indent}library ${library};\n`;
-  text += `${indent}use ${library}.${pkg}.all;\n`;
+  if (pkg) text += `${indent}use ${library}.${pkg}.all;\n`;
   // Keep a blank line between the clause and the design unit it precedes.
   if (line === unitLine && (lines[unitLine] ?? "").trim()) text += "\n";
 

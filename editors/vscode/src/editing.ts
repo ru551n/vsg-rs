@@ -85,6 +85,53 @@ async function findEntities(query: string): Promise<Sym[]> {
   return ((await workspaceSymbols(query)) ?? []).filter(isEntitySymbol);
 }
 
+/**
+ * Every entity the workspace declares.
+ *
+ * Not an empty workspace symbol query. VHDL-LS answers those with at most 200 symbols, and
+ * every port, generic, architecture and type counts toward them, so a project of a few dozen
+ * entities loses some of its own without a word: the picker would offer part of the design and
+ * the hierarchy would list part of it. A specific name still finds its entity, and a file's
+ * document symbols are the server's answer to "what does this file declare" with no cap at
+ * all, so each file is asked instead.
+ */
+async function projectEntities(): Promise<Sym[]> {
+  const files = await vscode.workspace.findFiles("**/*.{vhd,vhdl}", "**/node_modules/**");
+  const found: Sym[] = [];
+  // A few at a time: each is a round trip to the server, and opening a document for it is
+  // not free either.
+  for (let at = 0; at < files.length; at += 8) {
+    const batch = await Promise.all(files.slice(at, at + 8).map(entitiesIn));
+    found.push(...batch.flat());
+  }
+  return found;
+}
+
+/** The entities one file declares, as the workspace symbols the rest of this file works with. */
+async function entitiesIn(uri: vscode.Uri): Promise<Sym[]> {
+  const declared = flatten(await documentSymbols(uri)).filter(isEntitySymbol);
+  return Promise.all(
+    declared.map(async (entity) => {
+      // The library an entity was analysed in is only reported on the workspace symbol, as its
+      // containerName. Asking by name is a specific query, so it is not the one that hits the
+      // cap; the match is on file and line, since two entities can share a name.
+      const line = entity.selectionRange.start.line;
+      const named = (await findEntities(identOf(entity.name))).find(
+        (w) => w.location.uri.toString() === uri.toString() && w.location.range.start.line === line,
+      );
+      return (
+        named ??
+        new vscode.SymbolInformation(
+          entity.name,
+          entity.kind,
+          "",
+          new vscode.Location(uri, entity.selectionRange),
+        )
+      );
+    }),
+  );
+}
+
 async function entityAt(uri: vscode.Uri, position: vscode.Position, library: string) {
   return parseEntityHover(await hoverText(uri, position), library);
 }
@@ -108,7 +155,7 @@ interface ResolvedInstance {
   position: vscode.Position;
 }
 
-const resolvedInstances = new Map<string, ResolvedInstance | null>();
+const resolvedInstances = new Map<string, ResolvedInstance>();
 
 /**
  * Resolve the entity an instantiation refers to by asking the server for the
@@ -116,6 +163,13 @@ const resolvedInstances = new Map<string, ResolvedInstance | null>();
  * whose declaration is an entity wins; a component name resolves through its
  * own declaration the same way. Cached per document version, since the inlay
  * hint and code action providers ask repeatedly.
+ *
+ * Only a resolution that succeeded is cached. A null means either "this is not an
+ * instantiation of anything the server knows" or "the server has not finished
+ * analysing yet", and from the outside those cannot be told apart. Remembering the
+ * second one is a bug, because a document nobody edits never changes version and so
+ * never asks again: a file opened while VHDL-LS was still starting would show no
+ * hints for good.
  */
 async function resolveInstance(
   doc: vscode.TextDocument,
@@ -123,7 +177,7 @@ async function resolveInstance(
 ): Promise<ResolvedInstance | null> {
   const key = `${doc.uri.toString()}@${doc.version}#${inst.range.start.line}`;
   const cached = resolvedInstances.get(key);
-  if (cached !== undefined) return cached;
+  if (cached) return cached;
 
   const lastLine = Math.min(inst.range.start.line + 2, doc.lineCount - 1);
   const header = new vscode.Range(
@@ -156,8 +210,10 @@ async function resolveInstance(
     }
   }
 
-  if (resolvedInstances.size > 400) resolvedInstances.clear();
-  resolvedInstances.set(key, found);
+  if (found) {
+    if (resolvedInstances.size > 400) resolvedInstances.clear();
+    resolvedInstances.set(key, found);
+  }
   return found;
 }
 
@@ -211,6 +267,46 @@ async function designUnitLine(
   const top = await documentSymbols(doc.uri);
   const unit = top.find((s) => s.range.contains(position));
   return unit ? unit.range.start.line : 0;
+}
+
+/**
+ * The library the server analysed a file in, or undefined when the file says nothing about it.
+ *
+ * Only a workspace symbol carries a library, as its containerName, and only design units are
+ * asked for here: the file's first entity or package, matched by file and line since two units
+ * can share a name. A file holding nothing but architectures declares no unit of its own.
+ */
+async function libraryOfFile(uri: vscode.Uri): Promise<string | undefined> {
+  const units = (await documentSymbols(uri)).filter(
+    (s) => isEntitySymbol(s) || /^package\b/i.test(s.name),
+  );
+  for (const unit of units) {
+    const line = unit.selectionRange.start.line;
+    const own = ((await workspaceSymbols(identOf(unit.name))) ?? []).find(
+      (w) => w.location.uri.toString() === uri.toString() && w.location.range.start.line === line,
+    );
+    if (own?.containerName) return own.containerName.split(".")[0];
+  }
+  return undefined;
+}
+
+/**
+ * How an instantiation of an entity from `library` has to be written in `doc`, and the context
+ * edit that makes it legal.
+ *
+ * `library.entity` only resolves once `library x;` has made the name visible. Inside the library
+ * the file is itself analysed in, `work` names it and needs no clause; spelling that library out
+ * without one is an error, which is what a named library used to produce here. When the file's
+ * library cannot be told, the clause is added: `library mylib;` is legal in mylib itself.
+ */
+async function libraryFor(
+  doc: vscode.TextDocument,
+  unitLine: number,
+  library: string,
+): Promise<{ name: string; edit: ContextEdit | null }> {
+  const home = await libraryOfFile(doc.uri);
+  if (home && home.toLowerCase() === library.toLowerCase()) return { name: "work", edit: null };
+  return { name: library, edit: contextClauseEdit(doc.getText().split("\n"), unitLine, library) };
 }
 
 function applyContextEdit(doc: vscode.TextDocument, edit: ContextEdit): vscode.WorkspaceEdit {
@@ -356,7 +452,7 @@ async function removeUnusedUseClauses(): Promise<void> {
 
 /** Pick an entity from the workspace, ordered by library then name. */
 async function pickEntity(placeHolder: string): Promise<{ sym: Sym; label: string } | undefined> {
-  const entities = await findEntities("");
+  const entities = await projectEntities();
   if (!entities.length) {
     await noServer();
     return undefined;
@@ -405,11 +501,14 @@ async function instantiateEntity(): Promise<void> {
 
   const line = editor.document.lineAt(editor.selection.active.line);
   const indent = indentOf(line.text);
-  const text = renderInstance(e, { label, indent });
+  const unit = await designUnitLine(editor.document, editor.selection.active);
+  const home = await libraryFor(editor.document, unit, lib);
+  const text = renderInstance(e, { label, indent, library: home.name });
 
   await editor.edit((b) => {
     const at = new vscode.Position(line.lineNumber, indent.length);
     b.replace(new vscode.Range(at, editor.selection.active), text.trim() + "\n");
+    if (home.edit) b.insert(new vscode.Position(home.edit.line, 0), home.edit.text);
   });
 }
 
@@ -611,7 +710,12 @@ async function extractObject(
 // --- providers -------------------------------------------------------------
 
 class InstanceCompletion extends vscode.CompletionItem {
-  constructor(readonly sym: Sym, label: string) {
+  constructor(
+    readonly sym: Sym,
+    label: string,
+    readonly doc: vscode.TextDocument,
+    readonly unitLine: number,
+  ) {
     super(label, vscode.CompletionItemKind.Module);
   }
 }
@@ -649,7 +753,7 @@ const vhdlCompletions: vscode.CompletionItemProvider = {
     for (const s of syms) {
       if (isEntitySymbol(s)) {
         const name = identOf(s.name);
-        const item = new InstanceCompletion(s, name);
+        const item = new InstanceCompletion(s, name, document, unitLine);
         item.detail = `instantiate ${libraryOf(s)}.${name}`;
         item.filterText = name;
         item.sortText = `zzz_${name}`;
@@ -688,13 +792,19 @@ const vhdlCompletions: vscode.CompletionItemProvider = {
       const lib = libraryOf(item.sym);
       const e = await entityAt(item.sym.location.uri, item.sym.location.range.start, lib);
       if (!e) return item;
+      const home = await libraryFor(item.doc, item.unitLine, lib);
       item.insertText = new vscode.SnippetString(
-        renderInstance(e, { label: `i_${e.name}`, indent: "", snippet: true }),
+        renderInstance(e, { label: `i_${e.name}`, indent: "", snippet: true, library: home.name }),
       );
       item.documentation = new vscode.MarkdownString().appendCodeblock(
-        renderInstance(e, { indent: "" }),
+        renderInstance(e, { indent: "", library: home.name }),
         "vhdl",
       );
+      // The clause the name needs, added with the instance the way an import adds its `use`.
+      if (home.edit)
+        item.additionalTextEdits = [
+          vscode.TextEdit.insert(new vscode.Position(home.edit.line, 0), home.edit.text),
+        ];
       return item;
     }
 
@@ -929,7 +1039,7 @@ interface HierarchyNode {
  * nothing instantiates. Filtering to true top levels costs a references request
  * per entity on every refresh, which is not worth it until someone asks.
  */
-class DesignHierarchy implements vscode.TreeDataProvider<HierarchyNode> {
+export class DesignHierarchy implements vscode.TreeDataProvider<HierarchyNode> {
   private changed = new vscode.EventEmitter<HierarchyNode | undefined>();
   readonly onDidChangeTreeData = this.changed.event;
 
@@ -955,7 +1065,7 @@ class DesignHierarchy implements vscode.TreeDataProvider<HierarchyNode> {
 
   async getChildren(node?: HierarchyNode): Promise<HierarchyNode[]> {
     if (!node) {
-      const entities = await findEntities("");
+      const entities = await projectEntities();
       return entities
         .map((s) => ({
           label: identOf(s.name),

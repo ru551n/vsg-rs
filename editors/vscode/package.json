@@ -228,7 +228,8 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "node scripts/package.mjs",
-    "test": "node --experimental-strip-types src/generate.test.ts && node scripts/check-grammar.mjs"
+    "test": "node --experimental-strip-types src/generate.test.ts && node scripts/check-grammar.mjs",
+    "smoke": "node test/smoke/run.mjs"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

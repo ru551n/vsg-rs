@@ -239,3 +239,31 @@ assert.deepEqual(
   ["ieee.math_real", "ieee.numeric_std", "osvvm.RandomPkg", "work.types"],
 );
 console.log("ok - library order");
+
+// --- the library an instantiation names -------------------------------------------------------
+// `entity mylib.fifo` is only legal once `library mylib;` has made the name visible, so the
+// instance needs either `work` (inside the library the file is analysed in) or a library clause.
+// This used to write the first form for every named library and no clause, which the server
+// rejects with "No declaration of 'mylib'".
+{
+  const { renderInstance: instance, contextClauseEdit: clause } = await import("./generate.ts");
+  const fifo = { name: "fifo", library: "mylib", generics: [], ports: [] };
+
+  assert.ok(instance(fifo).includes("entity mylib.fifo"), "defaults to the reported library");
+  assert.ok(instance(fifo, { library: "work" }).includes("entity work.fifo"));
+
+  // Only the library clause, and only when it is missing.
+  assert.deepEqual(
+    clause(["entity top is"], 0, "mylib"),
+    { line: 0, text: "library mylib;\n\n" },
+  );
+  const declared = ["library ieee;", "library mylib;", "", "entity top is"];
+  assert.equal(clause(declared, 3, "mylib"), null, "already declared");
+  assert.deepEqual(
+    clause(["library ieee;", "use ieee.std_logic_1164.all;", "", "entity top is"], 3, "mylib"),
+    { line: 2, text: "library mylib;\n" },
+    "goes after the existing clauses, not above them",
+  );
+  assert.equal(clause(["entity top is"], 0, "work"), null, "work is always visible");
+}
+console.log("ok - instance library");
